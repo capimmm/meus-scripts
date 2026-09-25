@@ -11,8 +11,11 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 ---------------------------------------------------------
--- CONFIGURAÇÕES, WEBHOOK E DISCORD
+-- CONFIGURAÇÕES, WEBHOOK, DISCORD E AUTO-UPDATE
 ---------------------------------------------------------
+-- 🔗 COLOQUE AQUI A URL RAW DO SEU SCRIPT (Ex: GitHub Raw ou Pastebin Raw) PARA O AUTO-UPDATE FUNCIONAR
+local SCRIPT_URL = "https://raw.githubusercontent.com/seu-usuario/seu-repo/main/script.lua"
+
 local DISCORD_LINK = "https://discord.gg/rXZs7tzrN3"
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1552878552620474368/EMpbzFEzX93tCqCfbZh1TvJ7DFt7v64WI_ZwZ0rICF_BV90Nir62PfYFBnIUg8Abi0-s"
 local KEY_FILE_PATH = "zynk_auth_session.json"
@@ -53,7 +56,7 @@ if oldGui then
 end
 
 ---------------------------------------------------------
--- ESTADOS E VARIÁVEIS GLOBAL
+-- ESTADOS E VARIÁVEIS GLOBAIS
 ---------------------------------------------------------
 local isNoclipping = false
 local isRegenActive = false
@@ -62,6 +65,8 @@ local isAuthenticated = false
 
 local noclipConnection = nil
 local regenConnection = nil
+local hotbarFollowConn = nil
+local updateCheckTask = nil
 local hideToastTask = nil
 
 local espPlayerAddedConn = nil
@@ -126,7 +131,7 @@ local function loadKeyLocally()
 	if readfile and isfile and isfile(KEY_FILE_PATH) then
 		local success, result = pcall(function()
 			local content = readfile(KEY_FILE_PATH)
-			return HttpService:JSONDecode(content)
+			return HttpService:JSONEncode(content)
 		end)
 		if success and result and result.expiresAt then
 			if os.time() < result.expiresAt then
@@ -259,6 +264,8 @@ end
 local function unloadScript()
 	if noclipConnection then noclipConnection:Disconnect() end
 	if regenConnection then regenConnection:Disconnect() end
+	if hotbarFollowConn then hotbarFollowConn:Disconnect() end
+	if updateCheckTask then task.cancel(updateCheckTask) end
 	clearAllESP()
 	restoreParts()
 	
@@ -332,8 +339,8 @@ end
 ---------------------------------------------------------
 local toast = Instance.new("Frame")
 toast.Name = "ToastNotification"
-toast.Size = UDim2.new(0, 270, 0, 44)
-toast.Position = UDim2.new(0, -300, 1, -64) 
+toast.Size = UDim2.new(0, 280, 0, 44)
+toast.Position = UDim2.new(0, -310, 1, -64) 
 toast.BackgroundColor3 = CARD_COLOR
 toast.BorderSizePixel = 0
 toast.Parent = screenGui
@@ -378,14 +385,14 @@ local function showToast(text, color, keepVisible)
 
 	if not keepVisible then
 		hideToastTask = task.delay(3.5, function()
-			tween(toast, 0.35, {Position = UDim2.new(0, -300, 1, -64)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+			tween(toast, 0.35, {Position = UDim2.new(0, -310, 1, -64)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 			hideToastTask = nil
 		end)
 	end
 end
 
 ---------------------------------------------------------
--- TELA DE KEY (COM POP-IN ANIMAÇÃO)
+-- TELA DE KEY
 ---------------------------------------------------------
 local keyFrame = Instance.new("Frame")
 keyFrame.Name = "KeyFrame"
@@ -461,7 +468,7 @@ copyCorner.Parent = copyDiscordBtn
 
 copyDiscordBtn.MouseButton1Click:Connect(function()
 	if copyToClipboard(DISCORD_LINK) then
-		showToast("Link copiado para a área de transferência!", GREEN_ACCENT, false)
+		showToast("Link copiado!", GREEN_ACCENT, false)
 	end
 end)
 
@@ -505,12 +512,12 @@ verifyCorner.CornerRadius = UDim.new(0, 10)
 verifyCorner.Parent = verifyBtn
 
 ---------------------------------------------------------
--- MENU PRINCIPAL E HOTBAR FLUTUANTE
+-- MENU PRINCIPAL E HOTBAR TRANSLÚCIDA
 ---------------------------------------------------------
 local menu = Instance.new("Frame")
 menu.Name = "MainMenu"
 menu.Size = UDim2.new(0, 330, 0, 250)
-menu.Position = UDim2.new(0, 20, 0.2, 0)
+menu.Position = UDim2.new(0, 30, 0.2, 0)
 menu.BackgroundColor3 = BG_COLOR
 menu.BorderSizePixel = 0
 menu.Visible = false
@@ -585,7 +592,7 @@ addInteractiveAnimations(deleteBtn, SECONDARY_PILL, Color3.fromRGB(255, 220, 220
 addInteractiveAnimations(minimizeBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
 
 ---------------------------------------------------------
--- CONTAINER DE PÁGINAS COM CANVASGROUP (FADE & SLIDE)
+-- CONTAINER DE PÁGINAS
 ---------------------------------------------------------
 local pagesContainer = Instance.new("Frame")
 pagesContainer.Size = UDim2.new(1, -20, 0, 190)
@@ -618,7 +625,7 @@ pageStatus.Visible = false
 pageStatus.Parent = pagesContainer
 
 ---------------------------------------------------------
--- CONTEÚDO: PÁGINA PRINCIPAL
+-- PÁGINA PRINCIPAL
 ---------------------------------------------------------
 local function createToggleRow(posY, defaultText, keyText, callback, keyCallback)
 	local card = Instance.new("TextButton")
@@ -715,7 +722,7 @@ addInteractiveAnimations(menuKeyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 23
 menuKeyBtn.MouseButton1Click:Connect(function() startListening("Menu", menuKeyBtn) end)
 
 ---------------------------------------------------------
--- CONTEÚDO: PÁGINA SERVER
+-- PÁGINA SERVER
 ---------------------------------------------------------
 local function createServerBtn(posY, text, callback)
 	local btn = Instance.new("TextButton")
@@ -769,7 +776,7 @@ createServerBtn(110, "📋 Copiar Job ID do Servidor", function()
 end)
 
 ---------------------------------------------------------
--- CONTEÚDO: PÁGINA STATUS
+-- PÁGINA STATUS
 ---------------------------------------------------------
 local statusGrid = Instance.new("Frame")
 statusGrid.Size = UDim2.new(1, 0, 1, -10)
@@ -851,13 +858,15 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ---------------------------------------------------------
--- DESIGN DA HOTBAR FLUTUANTE (COM ÍCONES PERSONALIZADOS)
+-- HOTBAR TRANSLÚCIDA QUE SEGUE O CARD COM DELAY
 ---------------------------------------------------------
 local hotbar = Instance.new("Frame")
 hotbar.Name = "HotbarNav"
-hotbar.Size = UDim2.new(0, 330, 0, 52)
-hotbar.Position = UDim2.new(0, 20, 0.2, 260) -- Flutuando logo abaixo do menu
+hotbar.Size = UDim2.new(0, 330, 0, 50)
+-- Posição inicial próxima do menu
+hotbar.Position = UDim2.new(menu.Position.X.Scale, menu.Position.X.Offset, menu.Position.Y.Scale, menu.Position.Y.Offset + 260)
 hotbar.BackgroundColor3 = CARD_COLOR
+hotbar.BackgroundTransparency = 0.35 -- Translúcida
 hotbar.BorderSizePixel = 0
 hotbar.Visible = false
 hotbar.Parent = screenGui
@@ -869,19 +878,34 @@ hbCorner.Parent = hotbar
 local hbStroke = Instance.new("UIStroke")
 hbStroke.Color = STROKE_COLOR
 hbStroke.Thickness = 1.2
+hbStroke.Transparency = 0.2
 hbStroke.Parent = hotbar
 
 local hotbarScale = Instance.new("UIScale")
 hotbarScale.Scale = 1
 hotbarScale.Parent = hotbar
 
-makeDraggable(hotbar)
+-- MOTOR QUE FAZ A HOTBAR SEGUIR O CARD COM DELAY
+hotbarFollowConn = RunService.RenderStepped:Connect(function(dt)
+	if menu and hotbar and menu.Visible and hotbar.Visible then
+		local targetPos = UDim2.new(
+			menu.Position.X.Scale,
+			menu.Position.X.Offset,
+			menu.Position.Y.Scale,
+			menu.Position.Y.Offset + menu.Size.Y.Offset + 12 -- 12px abaixo do menu
+		)
+		-- Lerp com amortecimento para criar o efeito de delay fluido
+		local lerpSpeed = math.clamp(dt * 12, 0, 1)
+		hotbar.Position = hotbar.Position:Lerp(targetPos, lerpSpeed)
+	end
+end)
 
 local function createTabButton(posX, width, titleText, iconId)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(width, 0, 1, -12)
-	btn.Position = UDim2.new(posX, 0, 0.5, -20)
+	btn.Position = UDim2.new(posX, 0, 0.5, -19)
 	btn.BackgroundColor3 = SECONDARY_PILL
+	btn.BackgroundTransparency = 0.2 -- Botões levemente translúcidos
 	btn.Text = ""
 	btn.AutoButtonColor = false
 	btn.Parent = hotbar
@@ -958,7 +982,31 @@ btnStatus.MouseButton1Click:Connect(function() switchTab("Status") end)
 switchTab("Principal")
 
 ---------------------------------------------------------
--- INICIALIZAÇÃO DE TELA E VALIDAÇÃO DE KEY
+-- SISTEMA DE AUTO-UPDATE (A CADA 10 SEGUNDOS)
+---------------------------------------------------------
+local function startAutoUpdateLoop()
+	updateCheckTask = task.spawn(function()
+		while task.wait(10) do
+			if SCRIPT_URL and SCRIPT_URL ~= "https://raw.githubusercontent.com/seu-usuario/seu-repo/main/script.lua" then
+				pcall(function()
+					local newCode = game:HttpGet(SCRIPT_URL)
+					if newCode and #newCode > 100 then
+						if _G.ZynkCurrentScriptContent and _G.ZynkCurrentScriptContent ~= newCode then
+							_G.ZynkCurrentScriptContent = newCode
+							showToast("Nova atualização! Reiniciando...", GREEN_ACCENT, true)
+							task.wait(1.5)
+							unloadScript()
+							loadstring(newCode)()
+						end
+					end
+				end)
+			end
+		end
+	end)
+end
+
+---------------------------------------------------------
+-- INICIALIZAÇÃO DE TELA E AUTENTICAÇÃO
 ---------------------------------------------------------
 local function openMainMenu()
 	isAuthenticated = true
@@ -970,6 +1018,8 @@ local function openMainMenu()
 
 	tween(menuScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	tween(hotbarScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+	startAutoUpdateLoop()
 end
 
 local function verifyKey(customCode)
