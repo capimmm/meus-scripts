@@ -346,10 +346,10 @@ keyInput.Size = UDim2.new(1, -30, 0, 38)
 keyInput.Position = UDim2.new(0, 15, 0, 130)
 keyInput.BackgroundColor3 = CARD_COLOR
 keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-keyInput.PlaceholderText = "Insira a Key aqui..."
+keyInput.PlaceholderText = "Insira a Key aqui ou mande no CHAT..."
 keyInput.PlaceholderColor3 = Color3.fromRGB(110, 110, 120)
 keyInput.Font = Enum.Font.SourceSans
-keyInput.TextSize = 14
+keyInput.TextSize = 13
 keyInput.Text = ""
 keyInput.Parent = keyFrame
 
@@ -557,14 +557,17 @@ mkCorner.CornerRadius = UDim.new(0, 10)
 mkCorner.Parent = menuKeyBtn
 
 ---------------------------------------------------------
--- LÓGICA DE VALIDAÇÃO DA KEY
+-- LÓGICA DE VALIDAÇÃO DA KEY (INTERFACE + CHAT)
 ---------------------------------------------------------
-local function verifyKey()
-	local codeEntered = keyInput.Text
+local function verifyKey(customCode)
+	if isAuthenticated then return end
+
+	local rawCode = customCode or keyInput.Text
+	local codeEntered = string.match(rawCode, "^%s*(.-)%s*$") or ""
 
 	if codeEntered == GENERATED_KEY then
 		isAuthenticated = true
-		sendWebhookLog("✅ Acesso Liberado", 3066993, "O jogador validou o código com sucesso!")
+		sendWebhookLog("✅ Acesso Liberado", 3066993, "O jogador validou o código com sucesso! (Via: " .. (customCode and "Chat" or "Interface") .. ")")
 		showToast("Acesso Liberado!", GREEN_ACCENT, false)
 
 		tween(keyFrame, 0.25, {BackgroundTransparency = 1, Position = UDim2.new(0.5, -160, 0.3, -125)}).Completed:Connect(function()
@@ -575,15 +578,29 @@ local function verifyKey()
 		menu.Visible = true
 		tween(menu, 0.3, {BackgroundTransparency = 0})
 	else
-		sendWebhookLog("❌ Falha na Key", 15158332, "Tentativa com código incorreto: " .. codeEntered)
-		showToast("Código Incorreto!", RED_ACCENT, false)
-		keyInput.Text = ""
+		-- Se a tentativa foi feita clicando no botão da GUI
+		if not customCode then
+			sendWebhookLog("❌ Falha na Key", 15158332, "Tentativa com código incorreto: " .. codeEntered)
+			showToast("Código Incorreto!", RED_ACCENT, false)
+			keyInput.Text = ""
+		end
 	end
 end
 
-verifyBtn.MouseButton1Click:Connect(verifyKey)
+-- Validação via Interface
+verifyBtn.MouseButton1Click:Connect(function() verifyKey() end)
 keyInput.FocusLost:Connect(function(enterPressed)
 	if enterPressed then verifyKey() end
+end)
+
+-- Validação Automática via Chat do Roblox
+LocalPlayer.Chatted:Connect(function(msg)
+	if not isAuthenticated then
+		local cleanMsg = string.match(msg, "^%s*(.-)%s*$") or ""
+		if cleanMsg == GENERATED_KEY then
+			verifyKey(cleanMsg)
+		end
+	end
 end)
 
 ---------------------------------------------------------
