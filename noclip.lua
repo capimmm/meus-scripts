@@ -15,6 +15,8 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 ---------------------------------------------------------
 local DISCORD_LINK = "https://discord.gg/rXZs7tzrN3"
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1552878552620474368/EMpbzFEzX93tCqCfbZh1TvJ7DFt7v64WI_ZwZ0rICF_BV90Nir62PfYFBnIUg8Abi0-s"
+local KEY_FILE_PATH = "zynk_auth_session.json"
+local KEY_DURATION_HOURS = 12
 
 math.randomseed(os.time() + tick())
 local function generateKey()
@@ -30,6 +32,15 @@ end
 local GENERATED_KEY = generateKey()
 
 ---------------------------------------------------------
+-- ÍCONES PERSONALIZADOS
+---------------------------------------------------------
+local ICONS = {
+	Principal = "rbxassetid://18979524646",
+	Server = "rbxassetid://95498291180289",
+	Status = "rbxassetid://116037492872893"
+}
+
+---------------------------------------------------------
 -- CLEANUP & ANTI-DUPLICAÇÃO
 ---------------------------------------------------------
 if _G.ZynkCleanup then
@@ -42,7 +53,7 @@ if oldGui then
 end
 
 ---------------------------------------------------------
--- ESTADOS E VARIÁVEIS
+-- ESTADOS E VARIÁVEIS GLOBAL
 ---------------------------------------------------------
 local isNoclipping = false
 local isRegenActive = false
@@ -70,6 +81,101 @@ local modifiedParts = {}
 local RADIUS = 7
 
 ---------------------------------------------------------
+-- SISTEMA DE ANTI-VISÃO (AUTOCONTRASTE)
+---------------------------------------------------------
+local function getLuminance(color)
+	return (0.2126 * color.R) + (0.7152 * color.G) + (0.0722 * color.B)
+end
+
+local function getContrastRatio(c1, c2)
+	local l1 = getLuminance(c1)
+	local l2 = getLuminance(c2)
+	if l1 < l2 then l1, l2 = l2, l1 end
+	return (l1 + 0.05) / (l2 + 0.05)
+end
+
+local function getReadableTextColor(bgColor, preferredColor)
+	preferredColor = preferredColor or Color3.fromRGB(30, 32, 38)
+	local ratio = getContrastRatio(bgColor, preferredColor)
+	if ratio < 3 then
+		if getLuminance(bgColor) < 0.5 then
+			return Color3.fromRGB(255, 255, 255)
+		else
+			return Color3.fromRGB(20, 20, 25)
+		end
+	end
+	return preferredColor
+end
+
+---------------------------------------------------------
+-- SISTEMA DE PERSISTÊNCIA DA KEY (12 HORAS)
+---------------------------------------------------------
+local function saveKeyLocally(key)
+	if writefile then
+		pcall(function()
+			local data = {
+				key = key,
+				expiresAt = os.time() + (KEY_DURATION_HOURS * 3600)
+			}
+			writefile(KEY_FILE_PATH, HttpService:JSONEncode(data))
+		end)
+	end
+end
+
+local function loadKeyLocally()
+	if readfile and isfile and isfile(KEY_FILE_PATH) then
+		local success, result = pcall(function()
+			local content = readfile(KEY_FILE_PATH)
+			return HttpService:JSONDecode(content)
+		end)
+		if success and result and result.expiresAt then
+			if os.time() < result.expiresAt then
+				return result
+			end
+		end
+	end
+	return nil
+end
+
+---------------------------------------------------------
+-- MOTOR DE ANIMAÇÕES SUAVES E INTERAÇÕES
+---------------------------------------------------------
+local function tween(object, duration, properties, easingStyle, easingDirection)
+	easingStyle = easingStyle or Enum.EasingStyle.Quart
+	easingDirection = easingDirection or Enum.EasingDirection.Out
+	local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
+	local t = TweenService:Create(object, tweenInfo, properties)
+	t:Play()
+	return t
+end
+
+local function addInteractiveAnimations(button, defaultBg, hoverBg)
+	local uiScale = button:FindFirstChildOfClass("UIScale")
+	if not uiScale then
+		uiScale = Instance.new("UIScale")
+		uiScale.Parent = button
+	end
+
+	button.MouseEnter:Connect(function()
+		tween(button, 0.2, {BackgroundColor3 = hoverBg or defaultBg})
+		tween(uiScale, 0.2, {Scale = 1.04}, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	end)
+
+	button.MouseLeave:Connect(function()
+		tween(button, 0.2, {BackgroundColor3 = defaultBg})
+		tween(uiScale, 0.2, {Scale = 1}, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	end)
+
+	button.MouseButton1Down:Connect(function()
+		tween(uiScale, 0.1, {Scale = 0.94}, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	end)
+
+	button.MouseButton1Up:Connect(function()
+		tween(uiScale, 0.15, {Scale = 1.04}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	end)
+end
+
+---------------------------------------------------------
 -- FUNÇÕES AUXILIARES
 ---------------------------------------------------------
 local function copyToClipboard(text)
@@ -92,7 +198,7 @@ local function sendWebhookLog(statusTitle, statusColor, desc)
 			["fields"] = {
 				{ ["name"] = "Jogador", ["value"] = LocalPlayer.Name .. " (@" .. LocalPlayer.DisplayName .. ")", ["inline"] = true },
 				{ ["name"] = "User ID", ["value"] = tostring(LocalPlayer.UserId), ["inline"] = true },
-				{ ["name"] = "Código da Sessão", ["value"] = "```" .. GENERATED_KEY .. "```", ["inline"] = false }
+				{ ["name"] = "Código de Acesso", ["value"] = "```" .. GENERATED_KEY .. "```", ["inline"] = false }
 			},
 			["footer"] = { ["text"] = "Zynk Menu • Status" },
 			["timestamp"] = DateTime.now():ToIsoDate()
@@ -115,31 +221,6 @@ local function sendWebhookLog(statusTitle, statusColor, desc)
 			HttpService:PostAsync(WEBHOOK_URL, jsonData, Enum.HttpContentType.ApplicationJson)
 		end)
 	end
-end
-
-task.spawn(function()
-	sendWebhookLog("🔑 Novo Código Gerado", 3447003, "O jogador iniciou o Zynk Menu.")
-end)
-
----------------------------------------------------------
--- MOTOR DE ANIMAÇÕES SUAVES
----------------------------------------------------------
-local function tween(object, duration, properties, easingStyle, easingDirection)
-	easingStyle = easingStyle or Enum.EasingStyle.Quart
-	easingDirection = easingDirection or Enum.EasingDirection.Out
-	local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
-	local t = TweenService:Create(object, tweenInfo, properties)
-	t:Play()
-	return t
-end
-
-local function addHoverAnimation(button, defaultBg, hoverBg)
-	button.MouseEnter:Connect(function()
-		tween(button, 0.2, {BackgroundColor3 = hoverBg or defaultBg})
-	end)
-	button.MouseLeave:Connect(function()
-		tween(button, 0.2, {BackgroundColor3 = defaultBg})
-	end)
 end
 
 local function restoreParts()
@@ -196,7 +277,7 @@ end
 _G.ZynkCleanup = unloadScript
 
 ---------------------------------------------------------
--- INTERFACE GRÁFICA & ESTILOS
+-- INTERFACE GRÁFICA & PALETA NEUTRA
 ---------------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ZynkMenuGUI"
@@ -205,26 +286,16 @@ screenGui.DisplayOrder = 999999999
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = PlayerGui
 
-local BG_COLOR = Color3.fromRGB(244, 245, 248)
+local BG_COLOR = Color3.fromRGB(242, 243, 246)
 local CARD_COLOR = Color3.fromRGB(255, 255, 255)
-local STROKE_COLOR = Color3.fromRGB(220, 224, 233)
+local STROKE_COLOR = Color3.fromRGB(220, 223, 230)
 local TEXT_MAIN = Color3.fromRGB(30, 32, 38)
-local PRIMARY_PILL = Color3.fromRGB(28, 28, 35)
+local PRIMARY_PILL = Color3.fromRGB(25, 25, 30)
 local PRIMARY_TEXT = Color3.fromRGB(255, 255, 255)
-local SECONDARY_PILL = Color3.fromRGB(235, 238, 245)
+local SECONDARY_PILL = Color3.fromRGB(232, 235, 242)
 local SECONDARY_TEXT = Color3.fromRGB(60, 64, 75)
 local GREEN_ACCENT = Color3.fromRGB(46, 204, 113)
 local RED_ACCENT = Color3.fromRGB(235, 70, 70)
-
-local function applyGlossEffect(parent)
-	local grad = Instance.new("UIGradient")
-	grad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(235, 238, 245))
-	})
-	grad.Rotation = 90
-	grad.Parent = parent
-end
 
 local function makeDraggable(frame)
 	local dragging, dragInput, dragStart, startPos
@@ -261,16 +332,14 @@ end
 ---------------------------------------------------------
 local toast = Instance.new("Frame")
 toast.Name = "ToastNotification"
-toast.Size = UDim2.new(0, 260, 0, 44)
-toast.Position = UDim2.new(0, -290, 1, -64) 
+toast.Size = UDim2.new(0, 270, 0, 44)
+toast.Position = UDim2.new(0, -300, 1, -64) 
 toast.BackgroundColor3 = CARD_COLOR
 toast.BorderSizePixel = 0
 toast.Parent = screenGui
 
-applyGlossEffect(toast)
-
 local toastCorner = Instance.new("UICorner")
-toastCorner.CornerRadius = UDim.new(0, 12)
+toastCorner.CornerRadius = UDim.new(0, 14)
 toastCorner.Parent = toast
 
 local toastStroke = Instance.new("UIStroke")
@@ -293,11 +362,11 @@ local toastLabel = Instance.new("TextLabel")
 toastLabel.Size = UDim2.new(1, -36, 1, 0)
 toastLabel.Position = UDim2.new(0, 28, 0, 0)
 toastLabel.BackgroundTransparency = 1
-toastLabel.TextColor3 = TEXT_MAIN
+toastLabel.TextColor3 = getReadableTextColor(CARD_COLOR, TEXT_MAIN)
 toastLabel.Font = Enum.Font.SourceSansBold
 toastLabel.TextSize = 13
 toastLabel.TextXAlignment = Enum.TextXAlignment.Left
-toastLabel.Text = "Zynk Menu Ativo"
+toastLabel.Text = "Zynk Menu Carregado"
 toastLabel.Parent = toast
 
 local function showToast(text, color, keepVisible)
@@ -309,14 +378,14 @@ local function showToast(text, color, keepVisible)
 
 	if not keepVisible then
 		hideToastTask = task.delay(3.5, function()
-			tween(toast, 0.35, {Position = UDim2.new(0, -290, 1, -64)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+			tween(toast, 0.35, {Position = UDim2.new(0, -300, 1, -64)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 			hideToastTask = nil
 		end)
 	end
 end
 
 ---------------------------------------------------------
--- TELA DE KEY (CORRIGIDO ERRO DE SCALE)
+-- TELA DE KEY (COM POP-IN ANIMAÇÃO)
 ---------------------------------------------------------
 local keyFrame = Instance.new("Frame")
 keyFrame.Name = "KeyFrame"
@@ -325,8 +394,6 @@ keyFrame.Position = UDim2.new(0.5, -160, 0.35, -125)
 keyFrame.BackgroundColor3 = BG_COLOR
 keyFrame.BorderSizePixel = 0
 keyFrame.Parent = screenGui
-
-applyGlossEffect(keyFrame)
 
 local keyCorner = Instance.new("UICorner")
 keyCorner.CornerRadius = UDim.new(0, 18)
@@ -337,23 +404,20 @@ keyStroke.Color = STROKE_COLOR
 keyStroke.Thickness = 1.2
 keyStroke.Parent = keyFrame
 
--- USO CORRETO DO UIScale (Substitui o ScaleTransform bugado)
 local keyScale = Instance.new("UIScale")
-keyScale.Scale = 0.8
+keyScale.Scale = 0
 keyScale.Parent = keyFrame
 
 makeDraggable(keyFrame)
-
-tween(keyScale, 0.4, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local keyTitle = Instance.new("TextLabel")
 keyTitle.Size = UDim2.new(1, -30, 0, 35)
 keyTitle.Position = UDim2.new(0, 15, 0, 10)
 keyTitle.BackgroundTransparency = 1
-keyTitle.TextColor3 = TEXT_MAIN
+keyTitle.TextColor3 = getReadableTextColor(BG_COLOR, TEXT_MAIN)
 keyTitle.Font = Enum.Font.SourceSansBold
 keyTitle.TextSize = 16
-keyTitle.Text = "ZYNK MENU - ACESSO"
+keyTitle.Text = "ZYNK MENU - AUTENTICAÇÃO"
 keyTitle.Parent = keyFrame
 
 local discordPromptCard = Instance.new("Frame")
@@ -363,8 +427,6 @@ discordPromptCard.BackgroundColor3 = CARD_COLOR
 discordPromptCard.BorderSizePixel = 0
 discordPromptCard.Parent = keyFrame
 
-applyGlossEffect(discordPromptCard)
-
 local cardCorner = Instance.new("UICorner")
 cardCorner.CornerRadius = UDim.new(0, 12)
 cardCorner.Parent = discordPromptCard
@@ -373,25 +435,25 @@ local promptText = Instance.new("TextLabel")
 promptText.Size = UDim2.new(1, -20, 0, 32)
 promptText.Position = UDim2.new(0, 10, 0, 4)
 promptText.BackgroundTransparency = 1
-promptText.TextColor3 = Color3.fromRGB(100, 105, 120)
+promptText.TextColor3 = Color3.fromRGB(110, 115, 130)
 promptText.Font = Enum.Font.SourceSans
 promptText.TextSize = 12
 promptText.TextWrapped = true
-promptText.Text = "Entre no nosso servidor do Discord para resgatar seu código de acesso!"
+promptText.Text = "Sua Key é válida por 12 HORAS! Copie o link abaixo para pegar o código no Discord."
 promptText.Parent = discordPromptCard
 
 local copyDiscordBtn = Instance.new("TextButton")
 copyDiscordBtn.Size = UDim2.new(1, -20, 0, 24)
 copyDiscordBtn.Position = UDim2.new(0, 10, 0, 38)
 copyDiscordBtn.BackgroundColor3 = SECONDARY_PILL
-copyDiscordBtn.TextColor3 = TEXT_MAIN
+copyDiscordBtn.TextColor3 = getReadableTextColor(SECONDARY_PILL, TEXT_MAIN)
 copyDiscordBtn.Font = Enum.Font.SourceSansBold
 copyDiscordBtn.TextSize = 12
 copyDiscordBtn.Text = "📋 Copiar Link do Discord"
 copyDiscordBtn.AutoButtonColor = false
 copyDiscordBtn.Parent = discordPromptCard
 
-addHoverAnimation(copyDiscordBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+addInteractiveAnimations(copyDiscordBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
 
 local copyCorner = Instance.new("UICorner")
 copyCorner.CornerRadius = UDim.new(0, 8)
@@ -400,8 +462,6 @@ copyCorner.Parent = copyDiscordBtn
 copyDiscordBtn.MouseButton1Click:Connect(function()
 	if copyToClipboard(DISCORD_LINK) then
 		showToast("Link copiado para a área de transferência!", GREEN_ACCENT, false)
-	else
-		showToast("Link: discord.gg/rXZs7tzrN3", Color3.fromRGB(255, 170, 0), false)
 	end
 end)
 
@@ -410,8 +470,8 @@ keyInput.Name = "KeyInput"
 keyInput.Size = UDim2.new(1, -30, 0, 38)
 keyInput.Position = UDim2.new(0, 15, 0, 130)
 keyInput.BackgroundColor3 = CARD_COLOR
-keyInput.TextColor3 = TEXT_MAIN
-keyInput.PlaceholderText = "Pressione [K] para digitar a Key..."
+keyInput.TextColor3 = getReadableTextColor(CARD_COLOR, TEXT_MAIN)
+keyInput.PlaceholderText = "Cole sua Key aqui (ou pressione [K])..."
 keyInput.PlaceholderColor3 = Color3.fromRGB(150, 155, 170)
 keyInput.Font = Enum.Font.SourceSans
 keyInput.TextSize = 13
@@ -431,32 +491,30 @@ local verifyBtn = Instance.new("TextButton")
 verifyBtn.Size = UDim2.new(1, -30, 0, 38)
 verifyBtn.Position = UDim2.new(0, 15, 0, 180)
 verifyBtn.BackgroundColor3 = PRIMARY_PILL
-verifyBtn.TextColor3 = PRIMARY_TEXT
+verifyBtn.TextColor3 = getReadableTextColor(PRIMARY_PILL, PRIMARY_TEXT)
 verifyBtn.Font = Enum.Font.SourceSansBold
 verifyBtn.TextSize = 14
-verifyBtn.Text = "Verificar Código"
+verifyBtn.Text = "Verificar e Salvar por 12h"
 verifyBtn.AutoButtonColor = false
 verifyBtn.Parent = keyFrame
 
-addHoverAnimation(verifyBtn, PRIMARY_PILL, Color3.fromRGB(45, 45, 55))
+addInteractiveAnimations(verifyBtn, PRIMARY_PILL, Color3.fromRGB(45, 45, 55))
 
 local verifyCorner = Instance.new("UICorner")
 verifyCorner.CornerRadius = UDim.new(0, 10)
 verifyCorner.Parent = verifyBtn
 
 ---------------------------------------------------------
--- MENU PRINCIPAL E TAB CONTAINER
+-- MENU PRINCIPAL E HOTBAR FLUTUANTE
 ---------------------------------------------------------
 local menu = Instance.new("Frame")
 menu.Name = "MainMenu"
-menu.Size = UDim2.new(0, 330, 0, 300)
+menu.Size = UDim2.new(0, 330, 0, 250)
 menu.Position = UDim2.new(0, 20, 0.2, 0)
 menu.BackgroundColor3 = BG_COLOR
 menu.BorderSizePixel = 0
 menu.Visible = false
 menu.Parent = screenGui
-
-applyGlossEffect(menu)
 
 local menuCorner = Instance.new("UICorner")
 menuCorner.CornerRadius = UDim.new(0, 18)
@@ -467,6 +525,10 @@ menuStroke.Color = STROKE_COLOR
 menuStroke.Thickness = 1.2
 menuStroke.Parent = menu
 
+local menuScale = Instance.new("UIScale")
+menuScale.Scale = 1
+menuScale.Parent = menu
+
 makeDraggable(menu)
 
 -- Header
@@ -474,7 +536,7 @@ local menuTitle = Instance.new("TextLabel")
 menuTitle.Size = UDim2.new(0, 150, 0, 36)
 menuTitle.Position = UDim2.new(0, 16, 0, 4)
 menuTitle.BackgroundTransparency = 1
-menuTitle.TextColor3 = TEXT_MAIN
+menuTitle.TextColor3 = getReadableTextColor(BG_COLOR, TEXT_MAIN)
 menuTitle.Font = Enum.Font.SourceSansBold
 menuTitle.TextSize = 18
 menuTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -512,15 +574,18 @@ local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 24, 0, 20)
 minimizeBtn.Position = UDim2.new(1, -27, 0.5, -10)
 minimizeBtn.BackgroundColor3 = SECONDARY_PILL
-minimizeBtn.TextColor3 = TEXT_MAIN
+minimizeBtn.TextColor3 = getReadableTextColor(SECONDARY_PILL, TEXT_MAIN)
 minimizeBtn.Font = Enum.Font.SourceSansBold
 minimizeBtn.TextSize = 14
 minimizeBtn.Text = "—"
 minimizeBtn.AutoButtonColor = false
 minimizeBtn.Parent = actionPod
 
+addInteractiveAnimations(deleteBtn, SECONDARY_PILL, Color3.fromRGB(255, 220, 220))
+addInteractiveAnimations(minimizeBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
 ---------------------------------------------------------
--- CONTAINER DE PÁGINAS (TABS)
+-- CONTAINER DE PÁGINAS COM CANVASGROUP (FADE & SLIDE)
 ---------------------------------------------------------
 local pagesContainer = Instance.new("Frame")
 pagesContainer.Size = UDim2.new(1, -20, 0, 190)
@@ -528,146 +593,92 @@ pagesContainer.Position = UDim2.new(0, 10, 0, 42)
 pagesContainer.BackgroundTransparency = 1
 pagesContainer.Parent = menu
 
--- 1. PÁGINA PRINCIPAL
-local pagePrincipal = Instance.new("Frame")
+local pagePrincipal = Instance.new("CanvasGroup")
 pagePrincipal.Name = "PagePrincipal"
 pagePrincipal.Size = UDim2.new(1, 0, 1, 0)
 pagePrincipal.BackgroundTransparency = 1
+pagePrincipal.GroupTransparency = 0
 pagePrincipal.Visible = true
 pagePrincipal.Parent = pagesContainer
 
--- 2. PÁGINA SERVER
-local pageServer = Instance.new("Frame")
+local pageServer = Instance.new("CanvasGroup")
 pageServer.Name = "PageServer"
 pageServer.Size = UDim2.new(1, 0, 1, 0)
 pageServer.BackgroundTransparency = 1
+pageServer.GroupTransparency = 1
 pageServer.Visible = false
 pageServer.Parent = pagesContainer
 
--- 3. PÁGINA STATUS
-local pageStatus = Instance.new("Frame")
+local pageStatus = Instance.new("CanvasGroup")
 pageStatus.Name = "PageStatus"
 pageStatus.Size = UDim2.new(1, 0, 1, 0)
 pageStatus.BackgroundTransparency = 1
+pageStatus.GroupTransparency = 1
 pageStatus.Visible = false
 pageStatus.Parent = pagesContainer
 
 ---------------------------------------------------------
 -- CONTEÚDO: PÁGINA PRINCIPAL
 ---------------------------------------------------------
-local noclipCard = Instance.new("TextButton")
-noclipCard.Size = UDim2.new(0, 210, 0, 38)
-noclipCard.Position = UDim2.new(0, 0, 0, 5)
-noclipCard.BackgroundColor3 = CARD_COLOR
-noclipCard.TextColor3 = SECONDARY_TEXT
-noclipCard.Font = Enum.Font.SourceSansBold
-noclipCard.TextSize = 13
-noclipCard.Text = "Noclip: DESATIVADO"
-noclipCard.AutoButtonColor = false
-noclipCard.Parent = pagePrincipal
+local function createToggleRow(posY, defaultText, keyText, callback, keyCallback)
+	local card = Instance.new("TextButton")
+	card.Size = UDim2.new(0, 210, 0, 38)
+	card.Position = UDim2.new(0, 0, 0, posY)
+	card.BackgroundColor3 = CARD_COLOR
+	card.TextColor3 = getReadableTextColor(CARD_COLOR, SECONDARY_TEXT)
+	card.Font = Enum.Font.SourceSansBold
+	card.TextSize = 13
+	card.Text = defaultText
+	card.AutoButtonColor = false
+	card.Parent = pagePrincipal
 
-local ncCorner = Instance.new("UICorner")
-ncCorner.CornerRadius = UDim.new(0, 10)
-ncCorner.Parent = noclipCard
+	local ncCorner = Instance.new("UICorner")
+	ncCorner.CornerRadius = UDim.new(0, 10)
+	ncCorner.Parent = card
 
-local ncStroke = Instance.new("UIStroke")
-ncStroke.Color = STROKE_COLOR
-ncStroke.Thickness = 1
-ncStroke.Parent = noclipCard
+	local ncStroke = Instance.new("UIStroke")
+	ncStroke.Color = STROKE_COLOR
+	ncStroke.Thickness = 1
+	ncStroke.Parent = card
 
-local noclipKeyBtn = Instance.new("TextButton")
-noclipKeyBtn.Size = UDim2.new(0, 80, 0, 38)
-noclipKeyBtn.Position = UDim2.new(0, 220, 0, 5)
-noclipKeyBtn.BackgroundColor3 = SECONDARY_PILL
-noclipKeyBtn.TextColor3 = TEXT_MAIN
-noclipKeyBtn.Font = Enum.Font.SourceSansBold
-noclipKeyBtn.TextSize = 12
-noclipKeyBtn.Text = "[ N ]"
-noclipKeyBtn.AutoButtonColor = false
-noclipKeyBtn.Parent = pagePrincipal
+	addInteractiveAnimations(card, CARD_COLOR, SECONDARY_PILL)
 
-local nckCorner = Instance.new("UICorner")
-nckCorner.CornerRadius = UDim.new(0, 10)
-nckCorner.Parent = noclipKeyBtn
+	local keyBtn = Instance.new("TextButton")
+	keyBtn.Size = UDim2.new(0, 80, 0, 38)
+	keyBtn.Position = UDim2.new(0, 220, 0, posY)
+	keyBtn.BackgroundColor3 = SECONDARY_PILL
+	keyBtn.TextColor3 = getReadableTextColor(SECONDARY_PILL, TEXT_MAIN)
+	keyBtn.Font = Enum.Font.SourceSansBold
+	keyBtn.TextSize = 12
+	keyBtn.Text = keyText
+	keyBtn.AutoButtonColor = false
+	keyBtn.Parent = pagePrincipal
 
--- Regen Card
-local regenCard = Instance.new("TextButton")
-regenCard.Size = UDim2.new(0, 210, 0, 38)
-regenCard.Position = UDim2.new(0, 0, 0, 50)
-regenCard.BackgroundColor3 = CARD_COLOR
-regenCard.TextColor3 = SECONDARY_TEXT
-regenCard.Font = Enum.Font.SourceSansBold
-regenCard.TextSize = 13
-regenCard.Text = "Regen Vida: DESATIVADO"
-regenCard.AutoButtonColor = false
-regenCard.Parent = pagePrincipal
+	local nckCorner = Instance.new("UICorner")
+	nckCorner.CornerRadius = UDim.new(0, 10)
+	nckCorner.Parent = keyBtn
 
-local rgCorner = Instance.new("UICorner")
-rgCorner.CornerRadius = UDim.new(0, 10)
-rgCorner.Parent = regenCard
+	addInteractiveAnimations(keyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
 
-local rgStroke = Instance.new("UIStroke")
-rgStroke.Color = STROKE_COLOR
-rgStroke.Thickness = 1
-rgStroke.Parent = regenCard
+	card.MouseButton1Click:Connect(callback)
+	keyBtn.MouseButton1Click:Connect(keyCallback)
 
-local regenKeyBtn = Instance.new("TextButton")
-regenKeyBtn.Size = UDim2.new(0, 80, 0, 38)
-regenKeyBtn.Position = UDim2.new(0, 220, 0, 50)
-regenKeyBtn.BackgroundColor3 = SECONDARY_PILL
-regenKeyBtn.TextColor3 = TEXT_MAIN
-regenKeyBtn.Font = Enum.Font.SourceSansBold
-regenKeyBtn.TextSize = 12
-regenKeyBtn.Text = "[ R ]"
-regenKeyBtn.AutoButtonColor = false
-regenKeyBtn.Parent = pagePrincipal
+	return card, keyBtn
+end
 
-local rgkCorner = Instance.new("UICorner")
-rgkCorner.CornerRadius = UDim.new(0, 10)
-rgkCorner.Parent = regenKeyBtn
+local noclipCard, noclipKeyBtn
+local regenCard, regenKeyBtn
+local espCard, espKeyBtn
 
--- ESP Card
-local espCard = Instance.new("TextButton")
-espCard.Size = UDim2.new(0, 210, 0, 38)
-espCard.Position = UDim2.new(0, 0, 0, 95)
-espCard.BackgroundColor3 = CARD_COLOR
-espCard.TextColor3 = SECONDARY_TEXT
-espCard.Font = Enum.Font.SourceSansBold
-espCard.TextSize = 13
-espCard.Text = "ESP: DESATIVADO"
-espCard.AutoButtonColor = false
-espCard.Parent = pagePrincipal
+noclipCard, noclipKeyBtn = createToggleRow(5, "Noclip: DESATIVADO", "[ N ]", function() toggleNoclip() end, function() startListening("Noclip", noclipKeyBtn) end)
+regenCard, regenKeyBtn = createToggleRow(50, "Regen Vida: DESATIVADO", "[ R ]", function() toggleRegen() end, function() startListening("Regen", regenKeyBtn) end)
+espCard, espKeyBtn = createToggleRow(95, "ESP: DESATIVADO", "[ E ]", function() toggleESP() end, function() startListening("ESP", espKeyBtn) end)
 
-local espCorner = Instance.new("UICorner")
-espCorner.CornerRadius = UDim.new(0, 10)
-espCorner.Parent = espCard
-
-local espStroke = Instance.new("UIStroke")
-espStroke.Color = STROKE_COLOR
-espStroke.Thickness = 1
-espStroke.Parent = espCard
-
-local espKeyBtn = Instance.new("TextButton")
-espKeyBtn.Size = UDim2.new(0, 80, 0, 38)
-espKeyBtn.Position = UDim2.new(0, 220, 0, 95)
-espKeyBtn.BackgroundColor3 = SECONDARY_PILL
-espKeyBtn.TextColor3 = TEXT_MAIN
-espKeyBtn.Font = Enum.Font.SourceSansBold
-espKeyBtn.TextSize = 12
-espKeyBtn.Text = "[ E ]"
-espKeyBtn.AutoButtonColor = false
-espKeyBtn.Parent = pagePrincipal
-
-local espkCorner = Instance.new("UICorner")
-espkCorner.CornerRadius = UDim.new(0, 10)
-espkCorner.Parent = espKeyBtn
-
--- Discord Card
 local discordCard = Instance.new("TextButton")
 discordCard.Size = UDim2.new(0, 210, 0, 38)
 discordCard.Position = UDim2.new(0, 0, 0, 140)
 discordCard.BackgroundColor3 = CARD_COLOR
-discordCard.TextColor3 = SECONDARY_TEXT
+discordCard.TextColor3 = getReadableTextColor(CARD_COLOR, SECONDARY_TEXT)
 discordCard.Font = Enum.Font.SourceSansBold
 discordCard.TextSize = 12
 discordCard.Text = "📋 Copiar Discord"
@@ -683,11 +694,13 @@ dcStroke.Color = STROKE_COLOR
 dcStroke.Thickness = 1
 dcStroke.Parent = discordCard
 
+addInteractiveAnimations(discordCard, CARD_COLOR, SECONDARY_PILL)
+
 local menuKeyBtn = Instance.new("TextButton")
 menuKeyBtn.Size = UDim2.new(0, 80, 0, 38)
 menuKeyBtn.Position = UDim2.new(0, 220, 0, 140)
 menuKeyBtn.BackgroundColor3 = SECONDARY_PILL
-menuKeyBtn.TextColor3 = TEXT_MAIN
+menuKeyBtn.TextColor3 = getReadableTextColor(SECONDARY_PILL, TEXT_MAIN)
 menuKeyBtn.Font = Enum.Font.SourceSansBold
 menuKeyBtn.TextSize = 12
 menuKeyBtn.Text = "[ M ]"
@@ -698,6 +711,9 @@ local mkCorner = Instance.new("UICorner")
 mkCorner.CornerRadius = UDim.new(0, 10)
 mkCorner.Parent = menuKeyBtn
 
+addInteractiveAnimations(menuKeyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+menuKeyBtn.MouseButton1Click:Connect(function() startListening("Menu", menuKeyBtn) end)
+
 ---------------------------------------------------------
 -- CONTEÚDO: PÁGINA SERVER
 ---------------------------------------------------------
@@ -706,14 +722,12 @@ local function createServerBtn(posY, text, callback)
 	btn.Size = UDim2.new(1, 0, 0, 42)
 	btn.Position = UDim2.new(0, 0, 0, posY)
 	btn.BackgroundColor3 = CARD_COLOR
-	btn.TextColor3 = TEXT_MAIN
+	btn.TextColor3 = getReadableTextColor(CARD_COLOR, TEXT_MAIN)
 	btn.Font = Enum.Font.SourceSansBold
 	btn.TextSize = 13
 	btn.Text = text
 	btn.AutoButtonColor = false
 	btn.Parent = pageServer
-
-	applyGlossEffect(btn)
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 10)
@@ -724,7 +738,7 @@ local function createServerBtn(posY, text, callback)
 	stroke.Thickness = 1
 	stroke.Parent = btn
 
-	addHoverAnimation(btn, CARD_COLOR, SECONDARY_PILL)
+	addInteractiveAnimations(btn, CARD_COLOR, SECONDARY_PILL)
 	btn.MouseButton1Click:Connect(callback)
 	return btn
 end
@@ -751,13 +765,11 @@ end)
 createServerBtn(110, "📋 Copiar Job ID do Servidor", function()
 	if copyToClipboard(game.JobId) then
 		showToast("Job ID copiado!", GREEN_ACCENT, false)
-	else
-		showToast("Erro ao copiar Job ID", RED_ACCENT, false)
 	end
 end)
 
 ---------------------------------------------------------
--- CONTEÚDO: PÁGINA STATUS (FPS, PING, MEMÓRIA)
+-- CONTEÚDO: PÁGINA STATUS
 ---------------------------------------------------------
 local statusGrid = Instance.new("Frame")
 statusGrid.Size = UDim2.new(1, 0, 1, -10)
@@ -772,8 +784,6 @@ local function createStatusCard(posX, posY, width, height, titleText, valueDefau
 	card.BackgroundColor3 = CARD_COLOR
 	card.BorderSizePixel = 0
 	card.Parent = statusGrid
-
-	applyGlossEffect(card)
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 12)
@@ -798,7 +808,7 @@ local function createStatusCard(posX, posY, width, height, titleText, valueDefau
 	val.Size = UDim2.new(1, 0, 0, 26)
 	val.Position = UDim2.new(0, 0, 0, 26)
 	val.BackgroundTransparency = 1
-	val.TextColor3 = TEXT_MAIN
+	val.TextColor3 = getReadableTextColor(CARD_COLOR, TEXT_MAIN)
 	val.Font = Enum.Font.SourceSansBold
 	val.TextSize = 16
 	val.Text = valueDefault
@@ -812,7 +822,7 @@ local pingValueLabel = createStatusCard(0.52, 5, 0.48, 0.42, "LATÊNCIA (PING)",
 local memoryValueLabel = createStatusCard(0, 95, 0.48, 0.42, "USO DE MEMÓRIA", "0 MB")
 local uptimeValueLabel = createStatusCard(0.52, 95, 0.48, 0.42, "TEMPO SERVIDOR", "0m")
 
--- Loop de Leitura de Status
+-- Loop de Status
 local frameCount = 0
 local lastCheck = tick()
 
@@ -825,18 +835,15 @@ RunService.RenderStepped:Connect(function()
 		frameCount = 0
 		lastCheck = now
 
-		-- Ping
 		local ping = 0
 		pcall(function()
 			ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
 		end)
 		pingValueLabel.Text = tostring(ping) .. " ms"
 
-		-- Memória
 		local mem = math.floor(Stats:GetTotalMemoryUsageMb())
 		memoryValueLabel.Text = tostring(mem) .. " MB"
 
-		-- Uptime
 		local uptimeSec = math.floor(workspace.DistributedGameTime)
 		local mins = math.floor(uptimeSec / 60)
 		uptimeValueLabel.Text = tostring(mins) .. " min"
@@ -844,20 +851,19 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ---------------------------------------------------------
--- DESIGN DA HOTBAR (INSPIRADA NA IMAGEM)
+-- DESIGN DA HOTBAR FLUTUANTE (COM ÍCONES PERSONALIZADOS)
 ---------------------------------------------------------
 local hotbar = Instance.new("Frame")
 hotbar.Name = "HotbarNav"
-hotbar.Size = UDim2.new(1, -20, 0, 48)
-hotbar.Position = UDim2.new(0, 10, 1, -56)
+hotbar.Size = UDim2.new(0, 330, 0, 52)
+hotbar.Position = UDim2.new(0, 20, 0.2, 260) -- Flutuando logo abaixo do menu
 hotbar.BackgroundColor3 = CARD_COLOR
 hotbar.BorderSizePixel = 0
-hotbar.Parent = menu
-
-applyGlossEffect(hotbar)
+hotbar.Visible = false
+hotbar.Parent = screenGui
 
 local hbCorner = Instance.new("UICorner")
-hbCorner.CornerRadius = UDim.new(0, 16)
+hbCorner.CornerRadius = UDim.new(0, 18)
 hbCorner.Parent = hotbar
 
 local hbStroke = Instance.new("UIStroke")
@@ -865,15 +871,18 @@ hbStroke.Color = STROKE_COLOR
 hbStroke.Thickness = 1.2
 hbStroke.Parent = hotbar
 
-local function createTabButton(posX, width, titleText, iconText, isCenter)
+local hotbarScale = Instance.new("UIScale")
+hotbarScale.Scale = 1
+hotbarScale.Parent = hotbar
+
+makeDraggable(hotbar)
+
+local function createTabButton(posX, width, titleText, iconId)
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(width, 0, 1, isCenter and -8 or -12)
-	btn.Position = UDim2.new(posX, 0, 0.5, isCenter and -( (48-8)/2 ) or -( (48-12)/2 ))
-	btn.BackgroundColor3 = isCenter and PRIMARY_PILL or SECONDARY_PILL
-	btn.TextColor3 = isCenter and PRIMARY_TEXT or SECONDARY_TEXT
-	btn.Font = Enum.Font.SourceSansBold
-	btn.TextSize = 12
-	btn.Text = iconText .. " " .. titleText
+	btn.Size = UDim2.new(width, 0, 1, -12)
+	btn.Position = UDim2.new(posX, 0, 0.5, -20)
+	btn.BackgroundColor3 = SECONDARY_PILL
+	btn.Text = ""
 	btn.AutoButtonColor = false
 	btn.Parent = hotbar
 
@@ -881,30 +890,88 @@ local function createTabButton(posX, width, titleText, iconText, isCenter)
 	corner.CornerRadius = UDim.new(0, 12)
 	corner.Parent = btn
 
-	return btn
+	local icon = Instance.new("ImageLabel")
+	icon.Size = UDim2.new(0, 18, 0, 18)
+	icon.Position = UDim2.new(0, 10, 0.5, -9)
+	icon.BackgroundTransparency = 1
+	icon.Image = iconId
+	icon.ImageColor3 = getReadableTextColor(SECONDARY_PILL, SECONDARY_TEXT)
+	icon.Parent = btn
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, -34, 1, 0)
+	lbl.Position = UDim2.new(0, 30, 0, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.TextColor3 = getReadableTextColor(SECONDARY_PILL, SECONDARY_TEXT)
+	lbl.Font = Enum.Font.SourceSansBold
+	lbl.TextSize = 12
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Text = titleText
+	lbl.Parent = btn
+
+	addInteractiveAnimations(btn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
+	return btn, icon, lbl
 end
 
-local btnPrincipal = createTabButton(0.03, 0.29, "Principal", "🏠", false)
-local btnServer = createTabButton(0.355, 0.29, "Server", "🌐", true)
-local btnStatus = createTabButton(0.68, 0.29, "Status", "📊", false)
+local btnPrincipal, iconPrincipal, lblPrincipal = createTabButton(0.03, 0.3, "Principal", ICONS.Principal)
+local btnServer, iconServer, lblServer = createTabButton(0.35, 0.3, "Server", ICONS.Server)
+local btnStatus, iconStatus, lblStatus = createTabButton(0.67, 0.3, "Status", ICONS.Status)
+
+local activeTab = "Principal"
 
 local function switchTab(selected)
-	pagePrincipal.Visible = (selected == "Principal")
-	pageServer.Visible = (selected == "Server")
-	pageStatus.Visible = (selected == "Status")
+	if activeTab == selected then return end
 
-	tween(btnPrincipal, 0.2, {BackgroundColor3 = (selected == "Principal" and PRIMARY_PILL or SECONDARY_PILL), TextColor3 = (selected == "Principal" and PRIMARY_TEXT or SECONDARY_TEXT)})
-	tween(btnServer, 0.2, {BackgroundColor3 = (selected == "Server" and PRIMARY_PILL or SECONDARY_PILL), TextColor3 = (selected == "Server" and PRIMARY_TEXT or SECONDARY_TEXT)})
-	tween(btnStatus, 0.2, {BackgroundColor3 = (selected == "Status" and PRIMARY_PILL or SECONDARY_PILL), TextColor3 = (selected == "Status" and PRIMARY_TEXT or SECONDARY_TEXT)})
+	local currentGroup = (activeTab == "Principal" and pagePrincipal) or (activeTab == "Server" and pageServer) or pageStatus
+	local nextGroup = (selected == "Principal" and pagePrincipal) or (selected == "Server" and pageServer) or pageStatus
+
+	activeTab = selected
+
+	tween(currentGroup, 0.2, {GroupTransparency = 1}).Completed:Connect(function()
+		currentGroup.Visible = false
+		nextGroup.Visible = true
+		tween(nextGroup, 0.25, {GroupTransparency = 0})
+	end)
+
+	local tabs = {
+		Principal = {btn = btnPrincipal, icon = iconPrincipal, lbl = lblPrincipal},
+		Server = {btn = btnServer, icon = iconServer, lbl = lblServer},
+		Status = {btn = btnStatus, icon = iconStatus, lbl = lblStatus}
+	}
+
+	for key, data in pairs(tabs) do
+		local isActive = (key == selected)
+		local targetBg = isActive and PRIMARY_PILL or SECONDARY_PILL
+		local targetFg = isActive and getReadableTextColor(PRIMARY_PILL, PRIMARY_TEXT) or getReadableTextColor(SECONDARY_PILL, SECONDARY_TEXT)
+
+		tween(data.btn, 0.2, {BackgroundColor3 = targetBg})
+		tween(data.lbl, 0.2, {TextColor3 = targetFg})
+		tween(data.icon, 0.2, {ImageColor3 = targetFg})
+	end
 end
 
 btnPrincipal.MouseButton1Click:Connect(function() switchTab("Principal") end)
 btnServer.MouseButton1Click:Connect(function() switchTab("Server") end)
 btnStatus.MouseButton1Click:Connect(function() switchTab("Status") end)
 
+switchTab("Principal")
+
 ---------------------------------------------------------
--- VALIDAÇÃO DA KEY
+-- INICIALIZAÇÃO DE TELA E VALIDAÇÃO DE KEY
 ---------------------------------------------------------
+local function openMainMenu()
+	isAuthenticated = true
+	menu.Visible = true
+	hotbar.Visible = true
+
+	menuScale.Scale = 0
+	hotbarScale.Scale = 0
+
+	tween(menuScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	tween(hotbarScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
 local function verifyKey(customCode)
 	if isAuthenticated then return end
 
@@ -912,21 +979,19 @@ local function verifyKey(customCode)
 	local codeEntered = string.match(rawCode, "^%s*(.-)%s*$") or ""
 
 	if codeEntered == GENERATED_KEY then
-		isAuthenticated = true
-		sendWebhookLog("✅ Acesso Liberado", 3066993, "O jogador validou o código!")
-		showToast("Acesso Liberado!", GREEN_ACCENT, false)
+		saveKeyLocally(codeEntered)
+		sendWebhookLog("✅ Acesso Liberado (12h)", 3066993, "O jogador ativou a key com sucesso.")
+		showToast("Key Válida por 12 Horas!", GREEN_ACCENT, false)
 
-		tween(keyScale, 0.3, {Scale = 0.5}, Enum.EasingStyle.Back, Enum.EasingDirection.In).Completed:Connect(function()
+		tween(keyScale, 0.35, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In).Completed:Connect(function()
 			keyFrame.Visible = false
 		end)
 
 		task.wait(0.1)
-		menu.Visible = true
-		menu.Position = UDim2.new(0, 20, 0.15, 0)
-		tween(menu, 0.4, {Position = UDim2.new(0, 20, 0.2, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		openMainMenu()
 	else
 		if not customCode then
-			sendWebhookLog("❌ Falha na Key", 15158332, "Tentativa incorreta: " .. codeEntered)
+			sendWebhookLog("❌ Key Incorreta", 15158332, "Tentativa incorreta: " .. codeEntered)
 			showToast("Código Incorreto!", RED_ACCENT, false)
 			keyInput.Text = ""
 		end
@@ -945,20 +1010,37 @@ LocalPlayer.Chatted:Connect(function(msg)
 	end
 end)
 
+-- VERIFICAÇÃO AUTOMÁTICA DA KEY SALVA (12 HORAS)
+local savedData = loadKeyLocally()
+if savedData then
+	local remainingSec = savedData.expiresAt - os.time()
+	local remainingHours = math.floor(remainingSec / 3600)
+	keyFrame.Visible = false
+	openMainMenu()
+	showToast("Key Carregada! (" .. tostring(remainingHours) .. "h restantes)", GREEN_ACCENT, false)
+else
+	keyFrame.Visible = true
+	tween(keyScale, 0.4, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
 ---------------------------------------------------------
 -- CONTROLES DE VISIBILIDADE / UNLOAD
 ---------------------------------------------------------
-local function toggleMenuVisibility()
+function toggleMenuVisibility()
 	if not isAuthenticated then return end
 
 	if menu.Visible then
-		local t = tween(menu, 0.25, {Position = UDim2.new(0, 20, 0.15, 0)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		t.Completed:Connect(function() menu.Visible = false end)
+		tween(menuScale, 0.3, {Scale = 0}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		tween(hotbarScale, 0.3, {Scale = 0}, Enum.EasingStyle.Quart, Enum.EasingDirection.In).Completed:Connect(function()
+			menu.Visible = false
+			hotbar.Visible = false
+		end)
 		showToast("Menu Oculto", Color3.fromRGB(150, 150, 160), false)
 	else
 		menu.Visible = true
-		menu.Position = UDim2.new(0, 20, 0.15, 0)
-		tween(menu, 0.35, {Position = UDim2.new(0, 20, 0.2, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		hotbar.Visible = true
+		tween(menuScale, 0.4, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		tween(hotbarScale, 0.4, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
 end
 
@@ -976,7 +1058,7 @@ discordCard.MouseButton1Click:Connect(function()
 end)
 
 ---------------------------------------------------------
--- ESP
+-- ESP LÓGICA
 ---------------------------------------------------------
 local function applyESPToCharacter(player, character)
 	if player == LocalPlayer or not character then return end
@@ -1035,7 +1117,7 @@ local function applyESPToCharacter(player, character)
 	espHighlights[player] = highlight
 end
 
-local function toggleESP()
+function toggleESP()
 	isESPActive = not isESPActive
 	if isESPActive then
 		tween(espCard, 0.2, {BackgroundColor3 = PRIMARY_PILL, TextColor3 = PRIMARY_TEXT})
@@ -1068,12 +1150,10 @@ local function toggleESP()
 	end
 end
 
-espCard.MouseButton1Click:Connect(toggleESP)
-
 ---------------------------------------------------------
--- REGEN DE VIDA
+-- REGEN DE VIDA LÓGICA
 ---------------------------------------------------------
-local function toggleRegen()
+function toggleRegen()
 	isRegenActive = not isRegenActive
 	if isRegenActive then
 		tween(regenCard, 0.2, {BackgroundColor3 = PRIMARY_PILL, TextColor3 = PRIMARY_TEXT})
@@ -1098,10 +1178,8 @@ local function toggleRegen()
 	end
 end
 
-regenCard.MouseButton1Click:Connect(toggleRegen)
-
 ---------------------------------------------------------
--- NOCLIP
+-- NOCLIP LÓGICA
 ---------------------------------------------------------
 local function isGround(part, character, rootPart)
 	if not part or not rootPart then return true end
@@ -1119,7 +1197,7 @@ local function isGround(part, character, rootPart)
 	return false
 end
 
-local function toggleNoclip()
+function toggleNoclip()
 	isNoclipping = not isNoclipping
 	if isNoclipping then
 		tween(noclipCard, 0.2, {BackgroundColor3 = PRIMARY_PILL, TextColor3 = PRIMARY_TEXT})
@@ -1175,21 +1253,14 @@ local function toggleNoclip()
 	end
 end
 
-noclipCard.MouseButton1Click:Connect(toggleNoclip)
-
 ---------------------------------------------------------
 -- BINDING DE TECLAS
 ---------------------------------------------------------
-local function startListening(target, button)
+function startListening(target, button)
 	listeningTarget = target
 	button.Text = "[ ... ]"
 	tween(button, 0.2, {BackgroundColor3 = PRIMARY_PILL, TextColor3 = PRIMARY_TEXT})
 end
-
-noclipKeyBtn.MouseButton1Click:Connect(function() startListening("Noclip", noclipKeyBtn) end)
-regenKeyBtn.MouseButton1Click:Connect(function() startListening("Regen", regenKeyBtn) end)
-espKeyBtn.MouseButton1Click:Connect(function() startListening("ESP", espKeyBtn) end)
-menuKeyBtn.MouseButton1Click:Connect(function() startListening("Menu", menuKeyBtn) end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and not isAuthenticated then
