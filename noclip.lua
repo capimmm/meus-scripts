@@ -58,8 +58,7 @@ local keybinds = {
 	Menu = Enum.KeyCode.M
 }
 
-local listeningTarget = nil -- Qual tecla está sendo reconfigurada no momento
-
+local listeningTarget = nil 
 local modifiedParts = {}
 local RADIUS = 7
 
@@ -159,22 +158,37 @@ end
 _G.ZynkCleanup = unloadScript
 
 ---------------------------------------------------------
--- INTERFACE GRÁFICA
+-- INTERFACE GRÁFICA (TEMA RELUZENTE & SOBREPOSIÇÃO TOTAL)
 ---------------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ZynkMenuGUI"
 screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 999999999 -- Fica por cima de TODAS as interfaces[cite: 4]
+screenGui.IgnoreGuiInset = true -- Ocupa a tela inteira sem cortar no topo
 screenGui.Parent = PlayerGui
 
-local BG_COLOR = Color3.fromRGB(20, 20, 23)
-local CARD_COLOR = Color3.fromRGB(28, 28, 32)
-local STROKE_COLOR = Color3.fromRGB(50, 50, 58)
-local PRIMARY_PILL = Color3.fromRGB(235, 235, 240)
-local PRIMARY_TEXT = Color3.fromRGB(18, 18, 22)
-local SECONDARY_PILL = Color3.fromRGB(38, 38, 44)
-local SECONDARY_TEXT = Color3.fromRGB(200, 200, 210)
+-- Palette Clean / Reluzente (Inspirado no design enviado)[cite: 4]
+local BG_COLOR = Color3.fromRGB(244, 245, 248)
+local CARD_COLOR = Color3.fromRGB(255, 255, 255)
+local STROKE_COLOR = Color3.fromRGB(220, 224, 233)
+local TEXT_MAIN = Color3.fromRGB(30, 32, 38)
+local PRIMARY_PILL = Color3.fromRGB(28, 28, 35)
+local PRIMARY_TEXT = Color3.fromRGB(255, 255, 255)
+local SECONDARY_PILL = Color3.fromRGB(235, 238, 245)
+local SECONDARY_TEXT = Color3.fromRGB(60, 64, 75)
 local GREEN_ACCENT = Color3.fromRGB(46, 204, 113)
-local RED_ACCENT = Color3.fromRGB(231, 76, 60)
+local RED_ACCENT = Color3.fromRGB(235, 70, 70)
+
+-- Função para aplicar efeito de Brilho/Gradiante Reluzente[cite: 4]
+local function applyGlossEffect(parent)
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(235, 238, 245))
+	})
+	grad.Rotation = 90
+	grad.Parent = parent
+end
 
 local function makeDraggable(frame)
 	local dragging, dragInput, dragStart, startPos
@@ -213,9 +227,11 @@ local toast = Instance.new("Frame")
 toast.Name = "ToastNotification"
 toast.Size = UDim2.new(0, 260, 0, 44)
 toast.Position = UDim2.new(0, -290, 1, -64) 
-toast.BackgroundColor3 = BG_COLOR
+toast.BackgroundColor3 = CARD_COLOR
 toast.BorderSizePixel = 0
 toast.Parent = screenGui
+
+applyGlossEffect(toast)
 
 local toastCorner = Instance.new("UICorner")
 toastCorner.CornerRadius = UDim.new(0, 12)
@@ -241,7 +257,7 @@ local toastLabel = Instance.new("TextLabel")
 toastLabel.Size = UDim2.new(1, -36, 1, 0)
 toastLabel.Position = UDim2.new(0, 28, 0, 0)
 toastLabel.BackgroundTransparency = 1
-toastLabel.TextColor3 = Color3.fromRGB(230, 230, 235)
+toastLabel.TextColor3 = TEXT_MAIN
 toastLabel.Font = Enum.Font.SourceSansBold
 toastLabel.TextSize = 13
 toastLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -273,8 +289,10 @@ keyFrame.BackgroundColor3 = BG_COLOR
 keyFrame.BorderSizePixel = 0
 keyFrame.Parent = screenGui
 
+applyGlossEffect(keyFrame)
+
 local keyCorner = Instance.new("UICorner")
-keyCorner.CornerRadius = UDim.new(0, 16)
+keyCorner.CornerRadius = UDim.new(0, 18)
 keyCorner.Parent = keyFrame
 
 local keyStroke = Instance.new("UIStroke")
@@ -288,7 +306,7 @@ local keyTitle = Instance.new("TextLabel")
 keyTitle.Size = UDim2.new(1, -30, 0, 35)
 keyTitle.Position = UDim2.new(0, 15, 0, 10)
 keyTitle.BackgroundTransparency = 1
-keyTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+keyTitle.TextColor3 = TEXT_MAIN
 keyTitle.Font = Enum.Font.SourceSansBold
 keyTitle.TextSize = 16
 keyTitle.Text = "ZYNK MENU - ACESSO"
@@ -302,15 +320,17 @@ discordPromptCard.BackgroundColor3 = CARD_COLOR
 discordPromptCard.BorderSizePixel = 0
 discordPromptCard.Parent = keyFrame
 
+applyGlossEffect(discordPromptCard)
+
 local cardCorner = Instance.new("UICorner")
-cardCorner.CornerRadius = UDim.new(0, 10)
+cardCorner.CornerRadius = UDim.new(0, 12)
 cardCorner.Parent = discordPromptCard
 
 local promptText = Instance.new("TextLabel")
 promptText.Size = UDim2.new(1, -20, 0, 32)
 promptText.Position = UDim2.new(0, 10, 0, 4)
 promptText.BackgroundTransparency = 1
-promptText.TextColor3 = Color3.fromRGB(190, 190, 200)
+promptText.TextColor3 = Color3.fromRGB(100, 105, 120)
 promptText.Font = Enum.Font.SourceSans
 promptText.TextSize = 12
 promptText.TextWrapped = true
@@ -321,7 +341,7 @@ local copyDiscordBtn = Instance.new("TextButton")
 copyDiscordBtn.Size = UDim2.new(1, -20, 0, 24)
 copyDiscordBtn.Position = UDim2.new(0, 10, 0, 38)
 copyDiscordBtn.BackgroundColor3 = SECONDARY_PILL
-copyDiscordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+copyDiscordBtn.TextColor3 = TEXT_MAIN
 copyDiscordBtn.Font = Enum.Font.SourceSansBold
 copyDiscordBtn.TextSize = 12
 copyDiscordBtn.Text = "📋 Copiar Link do Discord"
@@ -329,7 +349,7 @@ copyDiscordBtn.AutoButtonColor = false
 copyDiscordBtn.Parent = discordPromptCard
 
 local copyCorner = Instance.new("UICorner")
-copyCorner.CornerRadius = UDim.new(0, 6)
+copyCorner.CornerRadius = UDim.new(0, 8)
 copyCorner.Parent = copyDiscordBtn
 
 copyDiscordBtn.MouseButton1Click:Connect(function()
@@ -345,9 +365,9 @@ keyInput.Name = "KeyInput"
 keyInput.Size = UDim2.new(1, -30, 0, 38)
 keyInput.Position = UDim2.new(0, 15, 0, 130)
 keyInput.BackgroundColor3 = CARD_COLOR
-keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-keyInput.PlaceholderText = "Insira a Key aqui ou mande no CHAT..."
-keyInput.PlaceholderColor3 = Color3.fromRGB(110, 110, 120)
+keyInput.TextColor3 = TEXT_MAIN
+keyInput.PlaceholderText = "Pressione [K] para digitar a Key..."
+keyInput.PlaceholderColor3 = Color3.fromRGB(150, 155, 170)
 keyInput.Font = Enum.Font.SourceSans
 keyInput.TextSize = 13
 keyInput.Text = ""
@@ -356,6 +376,11 @@ keyInput.Parent = keyFrame
 local inputCorner = Instance.new("UICorner")
 inputCorner.CornerRadius = UDim.new(0, 10)
 inputCorner.Parent = keyInput
+
+local inputStroke = Instance.new("UIStroke")
+inputStroke.Color = STROKE_COLOR
+inputStroke.Thickness = 1
+inputStroke.Parent = keyInput
 
 local verifyBtn = Instance.new("TextButton")
 verifyBtn.Size = UDim2.new(1, -30, 0, 38)
@@ -373,7 +398,7 @@ verifyCorner.CornerRadius = UDim.new(0, 10)
 verifyCorner.Parent = verifyBtn
 
 ---------------------------------------------------------
--- MENU PRINCIPAL (DESIGN CONFORME SEU DESENHO)
+-- MENU PRINCIPAL (DESIGN RELUZENTE CONFORME SEU DESENHO)[cite: 3, 4]
 ---------------------------------------------------------
 local menu = Instance.new("Frame")
 menu.Name = "MainMenu"
@@ -384,8 +409,10 @@ menu.BorderSizePixel = 0
 menu.Visible = false
 menu.Parent = screenGui
 
+applyGlossEffect(menu)
+
 local menuCorner = Instance.new("UICorner")
-menuCorner.CornerRadius = UDim.new(0, 16)
+menuCorner.CornerRadius = UDim.new(0, 18)
 menuCorner.Parent = menu
 
 local menuStroke = Instance.new("UIStroke")
@@ -396,25 +423,25 @@ menuStroke.Parent = menu
 makeDraggable(menu)
 
 ---------------------------------------------------------
--- CABEÇALHO COM DIVISÃO CONFORME O DESENHO
+-- CABEÇALHO COM DIVISÃO CONFORME O DESENHO[cite: 3]
 ---------------------------------------------------------
 local menuTitle = Instance.new("TextLabel")
 menuTitle.Size = UDim2.new(0, 150, 0, 40)
 menuTitle.Position = UDim2.new(0, 16, 0, 0)
 menuTitle.BackgroundTransparency = 1
-menuTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+menuTitle.TextColor3 = TEXT_MAIN
 menuTitle.Font = Enum.Font.SourceSansBold
 menuTitle.TextSize = 18
 menuTitle.TextXAlignment = Enum.TextXAlignment.Left
 menuTitle.Text = "ZYNK"
 menuTitle.Parent = menu
 
--- Caixinha Superior Direita com X e -
+-- Caixinha Superior Direita com X e -[cite: 3]
 local actionPod = Instance.new("Frame")
 actionPod.Name = "ActionPod"
 actionPod.Size = UDim2.new(0, 70, 0, 28)
 actionPod.Position = UDim2.new(1, -82, 0, 6)
-actionPod.BackgroundColor3 = Color3.fromRGB(14, 14, 17)
+actionPod.BackgroundColor3 = CARD_COLOR
 actionPod.BorderSizePixel = 0
 actionPod.Parent = menu
 
@@ -431,7 +458,7 @@ local deleteBtn = Instance.new("TextButton")
 deleteBtn.Name = "DeleteBtn"
 deleteBtn.Size = UDim2.new(0, 24, 0, 22)
 deleteBtn.Position = UDim2.new(0, 3, 0.5, -11)
-deleteBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+deleteBtn.BackgroundColor3 = SECONDARY_PILL
 deleteBtn.TextColor3 = RED_ACCENT
 deleteBtn.Font = Enum.Font.SourceSansBold
 deleteBtn.TextSize = 13
@@ -447,8 +474,8 @@ local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Name = "MinimizeBtn"
 minimizeBtn.Size = UDim2.new(0, 24, 0, 22)
 minimizeBtn.Position = UDim2.new(1, -27, 0.5, -11)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
-minimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+minimizeBtn.BackgroundColor3 = SECONDARY_PILL
+minimizeBtn.TextColor3 = TEXT_MAIN
 minimizeBtn.Font = Enum.Font.SourceSansBold
 minimizeBtn.TextSize = 15
 minimizeBtn.Text = "—"
@@ -460,14 +487,14 @@ minCorner.CornerRadius = UDim.new(0, 6)
 minCorner.Parent = minimizeBtn
 
 ---------------------------------------------------------
--- LINHAS DO MENU (PODER NA ESQUERDA | TECLA NA DIREITA)
+-- LINHAS DO MENU (PODER NA ESQUERDA | TECLA NA DIREITA)[cite: 3]
 ---------------------------------------------------------
 
 -- LINHA 1: NOCLIP
 local noclipCard = Instance.new("TextButton")
 noclipCard.Size = UDim2.new(0, 200, 0, 38)
 noclipCard.Position = UDim2.new(0, 15, 0, 48)
-noclipCard.BackgroundColor3 = SECONDARY_PILL
+noclipCard.BackgroundColor3 = CARD_COLOR
 noclipCard.TextColor3 = SECONDARY_TEXT
 noclipCard.Font = Enum.Font.SourceSansBold
 noclipCard.TextSize = 13
@@ -475,15 +502,22 @@ noclipCard.Text = "Noclip: DESATIVADO"
 noclipCard.AutoButtonColor = false
 noclipCard.Parent = menu
 
+applyGlossEffect(noclipCard)
+
 local ncCorner = Instance.new("UICorner")
 ncCorner.CornerRadius = UDim.new(0, 10)
 ncCorner.Parent = noclipCard
 
+local ncStroke = Instance.new("UIStroke")
+ncStroke.Color = STROKE_COLOR
+ncStroke.Thickness = 1
+ncStroke.Parent = noclipCard
+
 local noclipKeyBtn = Instance.new("TextButton")
 noclipKeyBtn.Size = UDim2.new(0, 75, 0, 38)
 noclipKeyBtn.Position = UDim2.new(0, 225, 0, 48)
-noclipKeyBtn.BackgroundColor3 = CARD_COLOR
-noclipKeyBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
+noclipKeyBtn.BackgroundColor3 = SECONDARY_PILL
+noclipKeyBtn.TextColor3 = TEXT_MAIN
 noclipKeyBtn.Font = Enum.Font.SourceSansBold
 noclipKeyBtn.TextSize = 12
 noclipKeyBtn.Text = "[ N ]"
@@ -498,7 +532,7 @@ nckCorner.Parent = noclipKeyBtn
 local regenCard = Instance.new("TextButton")
 regenCard.Size = UDim2.new(0, 200, 0, 38)
 regenCard.Position = UDim2.new(0, 15, 0, 96)
-regenCard.BackgroundColor3 = SECONDARY_PILL
+regenCard.BackgroundColor3 = CARD_COLOR
 regenCard.TextColor3 = SECONDARY_TEXT
 regenCard.Font = Enum.Font.SourceSansBold
 regenCard.TextSize = 13
@@ -506,15 +540,22 @@ regenCard.Text = "Regen Vida: DESATIVADO"
 regenCard.AutoButtonColor = false
 regenCard.Parent = menu
 
+applyGlossEffect(regenCard)
+
 local rgCorner = Instance.new("UICorner")
 rgCorner.CornerRadius = UDim.new(0, 10)
 rgCorner.Parent = regenCard
 
+local rgStroke = Instance.new("UIStroke")
+rgStroke.Color = STROKE_COLOR
+rgStroke.Thickness = 1
+rgStroke.Parent = regenCard
+
 local regenKeyBtn = Instance.new("TextButton")
 regenKeyBtn.Size = UDim2.new(0, 75, 0, 38)
 regenKeyBtn.Position = UDim2.new(0, 225, 0, 96)
-regenKeyBtn.BackgroundColor3 = CARD_COLOR
-regenKeyBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
+regenKeyBtn.BackgroundColor3 = SECONDARY_PILL
+regenKeyBtn.TextColor3 = TEXT_MAIN
 regenKeyBtn.Font = Enum.Font.SourceSansBold
 regenKeyBtn.TextSize = 12
 regenKeyBtn.Text = "[ R ]"
@@ -530,22 +571,29 @@ local discordCard = Instance.new("TextButton")
 discordCard.Size = UDim2.new(0, 200, 0, 38)
 discordCard.Position = UDim2.new(0, 15, 0, 144)
 discordCard.BackgroundColor3 = CARD_COLOR
-discordCard.TextColor3 = Color3.fromRGB(180, 180, 190)
-discordCard.Font = Enum.Font.SourceSans
+discordCard.TextColor3 = SECONDARY_TEXT
+discordCard.Font = Enum.Font.SourceSansBold
 discordCard.TextSize = 12
 discordCard.Text = "📋 Copiar Discord"
 discordCard.AutoButtonColor = false
 discordCard.Parent = menu
 
+applyGlossEffect(discordCard)
+
 local dcCorner = Instance.new("UICorner")
 dcCorner.CornerRadius = UDim.new(0, 10)
 dcCorner.Parent = discordCard
 
+local dcStroke = Instance.new("UIStroke")
+dcStroke.Color = STROKE_COLOR
+dcStroke.Thickness = 1
+dcStroke.Parent = discordCard
+
 local menuKeyBtn = Instance.new("TextButton")
 menuKeyBtn.Size = UDim2.new(0, 75, 0, 38)
 menuKeyBtn.Position = UDim2.new(0, 225, 0, 144)
-menuKeyBtn.BackgroundColor3 = CARD_COLOR
-menuKeyBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
+menuKeyBtn.BackgroundColor3 = SECONDARY_PILL
+menuKeyBtn.TextColor3 = TEXT_MAIN
 menuKeyBtn.Font = Enum.Font.SourceSansBold
 menuKeyBtn.TextSize = 12
 menuKeyBtn.Text = "[ M ]"
@@ -557,7 +605,7 @@ mkCorner.CornerRadius = UDim.new(0, 10)
 mkCorner.Parent = menuKeyBtn
 
 ---------------------------------------------------------
--- LÓGICA DE VALIDAÇÃO DA KEY (INTERFACE + CHAT)
+-- LÓGICA DE VALIDAÇÃO DA KEY
 ---------------------------------------------------------
 local function verifyKey(customCode)
 	if isAuthenticated then return end
@@ -578,7 +626,6 @@ local function verifyKey(customCode)
 		menu.Visible = true
 		tween(menu, 0.3, {BackgroundTransparency = 0})
 	else
-		-- Se a tentativa foi feita clicando no botão da GUI
 		if not customCode then
 			sendWebhookLog("❌ Falha na Key", 15158332, "Tentativa com código incorreto: " .. codeEntered)
 			showToast("Código Incorreto!", RED_ACCENT, false)
@@ -587,13 +634,11 @@ local function verifyKey(customCode)
 	end
 end
 
--- Validação via Interface
 verifyBtn.MouseButton1Click:Connect(function() verifyKey() end)
 keyInput.FocusLost:Connect(function(enterPressed)
 	if enterPressed then verifyKey() end
 end)
 
--- Validação Automática via Chat do Roblox
 LocalPlayer.Chatted:Connect(function(msg)
 	if not isAuthenticated then
 		local cleanMsg = string.match(msg, "^%s*(.-)%s*$") or ""
@@ -678,7 +723,7 @@ local function toggleRegen()
 			end
 		end)
 	else
-		tween(regenCard, 0.2, {BackgroundColor3 = SECONDARY_PILL, TextColor3 = SECONDARY_TEXT})
+		tween(regenCard, 0.2, {BackgroundColor3 = CARD_COLOR, TextColor3 = SECONDARY_TEXT})
 		regenCard.Text = "Regen Vida: DESATIVADO"
 		showToast("Regen Desativado", RED_ACCENT, false)
 
@@ -763,7 +808,7 @@ local function toggleNoclip()
 			end
 		end)
 	else
-		tween(noclipCard, 0.2, {BackgroundColor3 = SECONDARY_PILL, TextColor3 = SECONDARY_TEXT})
+		tween(noclipCard, 0.2, {BackgroundColor3 = CARD_COLOR, TextColor3 = SECONDARY_TEXT})
 		noclipCard.Text = "Noclip: DESATIVADO"
 
 		if noclipConnection then
@@ -787,12 +832,12 @@ end
 noclipCard.MouseButton1Click:Connect(toggleNoclip)
 
 ---------------------------------------------------------
--- SISTEMA DE ATALHOS PERSONALIZADOS POR PODER
+-- SISTEMA DE ATALHOS & FOCO AUTOMÁTICO NA TECLA [K]
 ---------------------------------------------------------
 local function startListening(target, button)
 	listeningTarget = target
 	button.Text = "[ ... ]"
-	tween(button, 0.2, {BackgroundColor3 = SECONDARY_PILL, TextColor3 = Color3.fromRGB(255, 255, 255)})
+	tween(button, 0.2, {BackgroundColor3 = PRIMARY_PILL, TextColor3 = PRIMARY_TEXT})
 end
 
 noclipKeyBtn.MouseButton1Click:Connect(function() startListening("Noclip", noclipKeyBtn) end)
@@ -800,6 +845,16 @@ regenKeyBtn.MouseButton1Click:Connect(function() startListening("Regen", regenKe
 menuKeyBtn.MouseButton1Click:Connect(function() startListening("Menu", menuKeyBtn) end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	-- Atalho 'K' para focar na caixa de texto da Key sem clicar[cite: 4]
+	if not gameProcessed and not isAuthenticated then
+		if input.KeyCode == Enum.KeyCode.K then
+			task.defer(function()
+				keyInput:CaptureFocus()
+			end)
+			return
+		end
+	end
+
 	if listeningTarget then
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			local btn = (listeningTarget == "Noclip" and noclipKeyBtn) or (listeningTarget == "Regen" and regenKeyBtn) or menuKeyBtn
@@ -815,7 +870,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			end
 			
 			listeningTarget = nil
-			tween(btn, 0.2, {BackgroundColor3 = CARD_COLOR, TextColor3 = Color3.fromRGB(180, 180, 190)})
+			tween(btn, 0.2, {BackgroundColor3 = SECONDARY_PILL, TextColor3 = TEXT_MAIN})
 		end
 		return
 	end
