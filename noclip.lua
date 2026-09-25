@@ -45,16 +45,24 @@ end
 ---------------------------------------------------------
 local isNoclipping = false
 local isRegenActive = false
+local isESPActive = false
 local isAuthenticated = false
 
 local noclipConnection = nil
 local regenConnection = nil
 local hideToastTask = nil
 
+-- Conexões do ESP
+local espPlayerAddedConn = nil
+local espPlayerRemovingConn = nil
+local espCharAddedConns = {}
+local espHighlights = {}
+
 -- Atalhos individuais para cada poder
 local keybinds = {
 	Noclip = Enum.KeyCode.N,
 	Regen = Enum.KeyCode.R,
+	ESP = Enum.KeyCode.E,
 	Menu = Enum.KeyCode.M
 }
 
@@ -118,7 +126,7 @@ task.spawn(function()
 end)
 
 ---------------------------------------------------------
--- ANIMAÇÕES SUAVES
+-- ANIMAÇÕES SUAVES E FLUIDAS (NOVO MOTOR DE ANIMAÇÃO)
 ---------------------------------------------------------
 local function tween(object, duration, properties, easingStyle, easingDirection)
 	easingStyle = easingStyle or Enum.EasingStyle.Quart
@@ -127,6 +135,24 @@ local function tween(object, duration, properties, easingStyle, easingDirection)
 	local t = TweenService:Create(object, tweenInfo, properties)
 	t:Play()
 	return t
+end
+
+-- Efeito de Hover Fluido nos Botões
+local function addHoverAnimation(button, defaultBg, hoverBg, defaultScale, hoverScale)
+	defaultScale = defaultScale or 1
+	hoverScale = hoverScale or 1.03
+
+	button.MouseEnter:Connect(function()
+		tween(button, 0.2, {
+			BackgroundColor3 = hoverBg or defaultBg
+		}, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	end)
+
+	button.MouseLeave:Connect(function()
+		tween(button, 0.2, {
+			BackgroundColor3 = defaultBg
+		}, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	end)
 end
 
 local function restoreParts()
@@ -138,9 +164,39 @@ local function restoreParts()
 	table.clear(modifiedParts)
 end
 
+---------------------------------------------------------
+-- LIMPEZA DO ESP E SCRIPT
+---------------------------------------------------------
+local function removeESPFromPlayer(player)
+	if espHighlights[player] then
+		espHighlights[player]:Destroy()
+		espHighlights[player] = nil
+	end
+	if player.Character then
+		local hl = player.Character:FindFirstChild("ZynkESP_HL")
+		if hl then hl:Destroy() end
+		local bb = player.Character:FindFirstChild("ZynkESP_Tag")
+		if bb then bb:Destroy() end
+	end
+end
+
+local function clearAllESP()
+	if espPlayerAddedConn then espPlayerAddedConn:Disconnect() espPlayerAddedConn = nil end
+	if espPlayerRemovingConn then espPlayerRemovingConn:Disconnect() espPlayerRemovingConn = nil end
+	for p, conn in pairs(espCharAddedConns) do
+		conn:Disconnect()
+	end
+	table.clear(espCharAddedConns)
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		removeESPFromPlayer(p)
+	end
+end
+
 local function unloadScript()
 	if noclipConnection then noclipConnection:Disconnect() end
 	if regenConnection then regenConnection:Disconnect() end
+	clearAllESP()
 	restoreParts()
 	
 	local character = LocalPlayer.Character
@@ -163,11 +219,11 @@ _G.ZynkCleanup = unloadScript
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ZynkMenuGUI"
 screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999999999 -- Fica por cima de TODAS as interfaces[cite: 4]
-screenGui.IgnoreGuiInset = true -- Ocupa a tela inteira sem cortar no topo
+screenGui.DisplayOrder = 999999999
+screenGui.IgnoreGuiInset = true
 screenGui.Parent = PlayerGui
 
--- Palette Clean / Reluzente (Inspirado no design enviado)[cite: 4]
+-- Palette Clean / Reluzente
 local BG_COLOR = Color3.fromRGB(244, 245, 248)
 local CARD_COLOR = Color3.fromRGB(255, 255, 255)
 local STROKE_COLOR = Color3.fromRGB(220, 224, 233)
@@ -179,7 +235,6 @@ local SECONDARY_TEXT = Color3.fromRGB(60, 64, 75)
 local GREEN_ACCENT = Color3.fromRGB(46, 204, 113)
 local RED_ACCENT = Color3.fromRGB(235, 70, 70)
 
--- Função para aplicar efeito de Brilho/Gradiante Reluzente[cite: 4]
 local function applyGlossEffect(parent)
 	local grad = Instance.new("UIGradient")
 	grad.Color = ColorSequence.new({
@@ -221,7 +276,7 @@ local function makeDraggable(frame)
 end
 
 ---------------------------------------------------------
--- TOAST DE NOTIFICAÇÃO
+-- TOAST DE NOTIFICAÇÃO (COM ENTRADA ELÁSTICA)
 ---------------------------------------------------------
 local toast = Instance.new("Frame")
 toast.Name = "ToastNotification"
@@ -268,18 +323,20 @@ local function showToast(text, color, keepVisible)
 	if hideToastTask then task.cancel(hideToastTask) hideToastTask = nil end
 	toastLabel.Text = text
 	statusDot.BackgroundColor3 = color
-	tween(toast, 0.4, {Position = UDim2.new(0, 20, 1, -64)})
+	
+	-- Transição fluída com efeito Spring
+	tween(toast, 0.45, {Position = UDim2.new(0, 20, 1, -64)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 	if not keepVisible then
 		hideToastTask = task.delay(3.5, function()
-			tween(toast, 0.4, {Position = UDim2.new(0, -290, 1, -64)})
+			tween(toast, 0.35, {Position = UDim2.new(0, -290, 1, -64)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 			hideToastTask = nil
 		end)
 	end
 end
 
 ---------------------------------------------------------
--- TELA DE KEY COM PEDIDO DO DISCORD NO CARD DO ROBLOX
+-- TELA DE KEY COM PEDIDO DO DISCORD
 ---------------------------------------------------------
 local keyFrame = Instance.new("Frame")
 keyFrame.Name = "KeyFrame"
@@ -301,6 +358,10 @@ keyStroke.Thickness = 1.2
 keyStroke.Parent = keyFrame
 
 makeDraggable(keyFrame)
+
+-- Pop-in de Entrada
+keyFrame.ScaleTransform = 0.8
+tween(keyFrame, 0.5, {Position = UDim2.new(0.5, -160, 0.35, -125)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local keyTitle = Instance.new("TextLabel")
 keyTitle.Size = UDim2.new(1, -30, 0, 35)
@@ -348,6 +409,8 @@ copyDiscordBtn.Text = "📋 Copiar Link do Discord"
 copyDiscordBtn.AutoButtonColor = false
 copyDiscordBtn.Parent = discordPromptCard
 
+addHoverAnimation(copyDiscordBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
 local copyCorner = Instance.new("UICorner")
 copyCorner.CornerRadius = UDim.new(0, 8)
 copyCorner.Parent = copyDiscordBtn
@@ -393,16 +456,18 @@ verifyBtn.Text = "Verificar Código"
 verifyBtn.AutoButtonColor = false
 verifyBtn.Parent = keyFrame
 
+addHoverAnimation(verifyBtn, PRIMARY_PILL, Color3.fromRGB(45, 45, 55))
+
 local verifyCorner = Instance.new("UICorner")
 verifyCorner.CornerRadius = UDim.new(0, 10)
 verifyCorner.Parent = verifyBtn
 
 ---------------------------------------------------------
--- MENU PRINCIPAL (DESIGN RELUZENTE CONFORME SEU DESENHO)[cite: 3, 4]
+-- MENU PRINCIPAL (DESIGN CONFORME SEU DESENHO)
 ---------------------------------------------------------
 local menu = Instance.new("Frame")
 menu.Name = "MainMenu"
-menu.Size = UDim2.new(0, 320, 0, 205)
+menu.Size = UDim2.new(0, 320, 0, 248) -- Altura ajustada para acomodar o ESP
 menu.Position = UDim2.new(0, 20, 0.2, 0)
 menu.BackgroundColor3 = BG_COLOR
 menu.BorderSizePixel = 0
@@ -423,7 +488,7 @@ menuStroke.Parent = menu
 makeDraggable(menu)
 
 ---------------------------------------------------------
--- CABEÇALHO COM DIVISÃO CONFORME O DESENHO[cite: 3]
+-- CABEÇALHO
 ---------------------------------------------------------
 local menuTitle = Instance.new("TextLabel")
 menuTitle.Size = UDim2.new(0, 150, 0, 40)
@@ -436,7 +501,6 @@ menuTitle.TextXAlignment = Enum.TextXAlignment.Left
 menuTitle.Text = "ZYNK"
 menuTitle.Parent = menu
 
--- Caixinha Superior Direita com X e -[cite: 3]
 local actionPod = Instance.new("Frame")
 actionPod.Name = "ActionPod"
 actionPod.Size = UDim2.new(0, 70, 0, 28)
@@ -466,6 +530,8 @@ deleteBtn.Text = "X"
 deleteBtn.AutoButtonColor = false
 deleteBtn.Parent = actionPod
 
+addHoverAnimation(deleteBtn, SECONDARY_PILL, Color3.fromRGB(255, 225, 225))
+
 local delCorner = Instance.new("UICorner")
 delCorner.CornerRadius = UDim.new(0, 6)
 delCorner.Parent = deleteBtn
@@ -482,18 +548,20 @@ minimizeBtn.Text = "—"
 minimizeBtn.AutoButtonColor = false
 minimizeBtn.Parent = actionPod
 
+addHoverAnimation(minimizeBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
 local minCorner = Instance.new("UICorner")
 minCorner.CornerRadius = UDim.new(0, 6)
 minCorner.Parent = minimizeBtn
 
 ---------------------------------------------------------
--- LINHAS DO MENU (PODER NA ESQUERDA | TECLA NA DIREITA)[cite: 3]
+-- LINHAS DO MENU DE PODERES
 ---------------------------------------------------------
 
 -- LINHA 1: NOCLIP
 local noclipCard = Instance.new("TextButton")
 noclipCard.Size = UDim2.new(0, 200, 0, 38)
-noclipCard.Position = UDim2.new(0, 15, 0, 48)
+noclipCard.Position = UDim2.new(0, 15, 0, 46)
 noclipCard.BackgroundColor3 = CARD_COLOR
 noclipCard.TextColor3 = SECONDARY_TEXT
 noclipCard.Font = Enum.Font.SourceSansBold
@@ -515,7 +583,7 @@ ncStroke.Parent = noclipCard
 
 local noclipKeyBtn = Instance.new("TextButton")
 noclipKeyBtn.Size = UDim2.new(0, 75, 0, 38)
-noclipKeyBtn.Position = UDim2.new(0, 225, 0, 48)
+noclipKeyBtn.Position = UDim2.new(0, 225, 0, 46)
 noclipKeyBtn.BackgroundColor3 = SECONDARY_PILL
 noclipKeyBtn.TextColor3 = TEXT_MAIN
 noclipKeyBtn.Font = Enum.Font.SourceSansBold
@@ -524,6 +592,8 @@ noclipKeyBtn.Text = "[ N ]"
 noclipKeyBtn.AutoButtonColor = false
 noclipKeyBtn.Parent = menu
 
+addHoverAnimation(noclipKeyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
 local nckCorner = Instance.new("UICorner")
 nckCorner.CornerRadius = UDim.new(0, 10)
 nckCorner.Parent = noclipKeyBtn
@@ -531,7 +601,7 @@ nckCorner.Parent = noclipKeyBtn
 -- LINHA 2: REGEN DE VIDA
 local regenCard = Instance.new("TextButton")
 regenCard.Size = UDim2.new(0, 200, 0, 38)
-regenCard.Position = UDim2.new(0, 15, 0, 96)
+regenCard.Position = UDim2.new(0, 15, 0, 92)
 regenCard.BackgroundColor3 = CARD_COLOR
 regenCard.TextColor3 = SECONDARY_TEXT
 regenCard.Font = Enum.Font.SourceSansBold
@@ -553,7 +623,7 @@ rgStroke.Parent = regenCard
 
 local regenKeyBtn = Instance.new("TextButton")
 regenKeyBtn.Size = UDim2.new(0, 75, 0, 38)
-regenKeyBtn.Position = UDim2.new(0, 225, 0, 96)
+regenKeyBtn.Position = UDim2.new(0, 225, 0, 92)
 regenKeyBtn.BackgroundColor3 = SECONDARY_PILL
 regenKeyBtn.TextColor3 = TEXT_MAIN
 regenKeyBtn.Font = Enum.Font.SourceSansBold
@@ -562,14 +632,56 @@ regenKeyBtn.Text = "[ R ]"
 regenKeyBtn.AutoButtonColor = false
 regenKeyBtn.Parent = menu
 
+addHoverAnimation(regenKeyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
 local rgkCorner = Instance.new("UICorner")
 rgkCorner.CornerRadius = UDim.new(0, 10)
 rgkCorner.Parent = regenKeyBtn
 
--- LINHA 3: LINK DISCORD & ATALHO MENU
+-- LINHA 3: ESP (NOVA FUNCIONALIDADE)
+local espCard = Instance.new("TextButton")
+espCard.Size = UDim2.new(0, 200, 0, 38)
+espCard.Position = UDim2.new(0, 15, 0, 138)
+espCard.BackgroundColor3 = CARD_COLOR
+espCard.TextColor3 = SECONDARY_TEXT
+espCard.Font = Enum.Font.SourceSansBold
+espCard.TextSize = 13
+espCard.Text = "ESP: DESATIVADO"
+espCard.AutoButtonColor = false
+espCard.Parent = menu
+
+applyGlossEffect(espCard)
+
+local espCorner = Instance.new("UICorner")
+espCorner.CornerRadius = UDim.new(0, 10)
+espCorner.Parent = espCard
+
+local espStroke = Instance.new("UIStroke")
+espStroke.Color = STROKE_COLOR
+espStroke.Thickness = 1
+espStroke.Parent = espCard
+
+local espKeyBtn = Instance.new("TextButton")
+espKeyBtn.Size = UDim2.new(0, 75, 0, 38)
+espKeyBtn.Position = UDim2.new(0, 225, 0, 138)
+espKeyBtn.BackgroundColor3 = SECONDARY_PILL
+espKeyBtn.TextColor3 = TEXT_MAIN
+espKeyBtn.Font = Enum.Font.SourceSansBold
+espKeyBtn.TextSize = 12
+espKeyBtn.Text = "[ E ]"
+espKeyBtn.AutoButtonColor = false
+espKeyBtn.Parent = menu
+
+addHoverAnimation(espKeyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
+
+local espkCorner = Instance.new("UICorner")
+espkCorner.CornerRadius = UDim.new(0, 10)
+espkCorner.Parent = espKeyBtn
+
+-- LINHA 4: LINK DISCORD & ATALHO MENU
 local discordCard = Instance.new("TextButton")
 discordCard.Size = UDim2.new(0, 200, 0, 38)
-discordCard.Position = UDim2.new(0, 15, 0, 144)
+discordCard.Position = UDim2.new(0, 15, 0, 184)
 discordCard.BackgroundColor3 = CARD_COLOR
 discordCard.TextColor3 = SECONDARY_TEXT
 discordCard.Font = Enum.Font.SourceSansBold
@@ -591,7 +703,7 @@ dcStroke.Parent = discordCard
 
 local menuKeyBtn = Instance.new("TextButton")
 menuKeyBtn.Size = UDim2.new(0, 75, 0, 38)
-menuKeyBtn.Position = UDim2.new(0, 225, 0, 144)
+menuKeyBtn.Position = UDim2.new(0, 225, 0, 184)
 menuKeyBtn.BackgroundColor3 = SECONDARY_PILL
 menuKeyBtn.TextColor3 = TEXT_MAIN
 menuKeyBtn.Font = Enum.Font.SourceSansBold
@@ -599,6 +711,8 @@ menuKeyBtn.TextSize = 12
 menuKeyBtn.Text = "[ M ]"
 menuKeyBtn.AutoButtonColor = false
 menuKeyBtn.Parent = menu
+
+addHoverAnimation(menuKeyBtn, SECONDARY_PILL, Color3.fromRGB(220, 225, 235))
 
 local mkCorner = Instance.new("UICorner")
 mkCorner.CornerRadius = UDim.new(0, 10)
@@ -618,13 +732,15 @@ local function verifyKey(customCode)
 		sendWebhookLog("✅ Acesso Liberado", 3066993, "O jogador validou o código com sucesso! (Via: " .. (customCode and "Chat" or "Interface") .. ")")
 		showToast("Acesso Liberado!", GREEN_ACCENT, false)
 
-		tween(keyFrame, 0.25, {BackgroundTransparency = 1, Position = UDim2.new(0.5, -160, 0.3, -125)}).Completed:Connect(function()
+		-- Animação de saída suave da caixa de key
+		tween(keyFrame, 0.35, {Position = UDim2.new(0.5, -160, 0.25, -125)}, Enum.EasingStyle.Back, Enum.EasingDirection.In).Completed:Connect(function()
 			keyFrame.Visible = false
 		end)
 
 		task.wait(0.2)
 		menu.Visible = true
-		tween(menu, 0.3, {BackgroundTransparency = 0})
+		menu.Position = UDim2.new(0, 20, 0.15, 0)
+		tween(menu, 0.45, {Position = UDim2.new(0, 20, 0.2, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	else
 		if not customCode then
 			sendWebhookLog("❌ Falha na Key", 15158332, "Tentativa com código incorreto: " .. codeEntered)
@@ -655,34 +771,14 @@ local function toggleMenuVisibility()
 	if not isAuthenticated then return end
 
 	if menu.Visible then
-		local t = tween(menu, 0.2, {BackgroundTransparency = 1})
-		for _, child in ipairs(menu:GetDescendants()) do
-			if child:IsA("TextLabel") or child:IsA("TextButton") then
-				tween(child, 0.2, {TextTransparency = 1, BackgroundTransparency = 1})
-			elseif child:IsA("Frame") then
-				tween(child, 0.2, {BackgroundTransparency = 1})
-			elseif child:IsA("UIStroke") then
-				tween(child, 0.2, {Transparency = 1})
-			end
-		end
-		
+		local t = tween(menu, 0.25, {Position = UDim2.new(0, 20, 0.15, 0)}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		t.Completed:Connect(function() menu.Visible = false end)
 		local menuKeyName = keybinds.Menu and keybinds.Menu.Name or "Nenhum"
 		showToast("Menu Oculto (Pressione " .. menuKeyName .. ")", Color3.fromRGB(150, 150, 160), false)
 	else
 		menu.Visible = true
-		tween(menu, 0.25, {BackgroundTransparency = 0})
-		for _, child in ipairs(menu:GetDescendants()) do
-			if child:IsA("UIStroke") then
-				tween(child, 0.25, {Transparency = 0})
-			elseif child:IsA("Frame") and child.Name == "ActionPod" then
-				tween(child, 0.25, {BackgroundTransparency = 0})
-			elseif child:IsA("TextLabel") then
-				tween(child, 0.25, {TextTransparency = 0})
-			elseif child:IsA("TextButton") then
-				tween(child, 0.25, {TextTransparency = 0, BackgroundTransparency = 0})
-			end
-		end
+		menu.Position = UDim2.new(0, 20, 0.15, 0)
+		tween(menu, 0.35, {Position = UDim2.new(0, 20, 0.2, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
 end
 
@@ -701,6 +797,112 @@ discordCard.MouseButton1Click:Connect(function()
 		showToast("Link: discord.gg/rXZs7tzrN3", Color3.fromRGB(255, 170, 0), false)
 	end
 end)
+
+---------------------------------------------------------
+-- FUNCIONALIDADE DO ESP (WALLHACK & TAG)
+---------------------------------------------------------
+local function applyESPToCharacter(player, character)
+	if player == LocalPlayer or not character then return end
+
+	removeESPFromPlayer(player)
+
+	-- Highlight através das paredes
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ZynkESP_HL"
+	highlight.Adornee = character
+	highlight.FillColor = Color3.fromRGB(100, 130, 255)
+	highlight.FillTransparency = 0.5
+	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.OutlineTransparency = 0.1
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = character
+
+	-- Tag de Nome e Vida na Cabeça
+	local head = character:WaitForChild("Head", 3)
+	if head then
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "ZynkESP_Tag"
+		billboard.Adornee = head
+		billboard.Size = UDim2.new(0, 160, 0, 35)
+		billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+		billboard.AlwaysOnTop = true
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Size = UDim2.new(1, 0, 0, 18)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		nameLabel.TextStrokeTransparency = 0.2
+		nameLabel.Font = Enum.Font.SourceSansBold
+		nameLabel.TextSize = 13
+		nameLabel.Text = player.DisplayName .. " (@" .. player.Name .. ")"
+		nameLabel.Parent = billboard
+
+		local hum = character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			local hpLabel = Instance.new("TextLabel")
+			hpLabel.Size = UDim2.new(1, 0, 0, 14)
+			hpLabel.Position = UDim2.new(0, 0, 0, 18)
+			hpLabel.BackgroundTransparency = 1
+			hpLabel.TextColor3 = Color3.fromRGB(120, 255, 150)
+			hpLabel.TextStrokeTransparency = 0.3
+			hpLabel.Font = Enum.Font.SourceSans
+			hpLabel.TextSize = 11
+			hpLabel.Text = "HP: " .. math.floor(hum.Health) .. " / " .. math.floor(hum.MaxHealth)
+			hpLabel.Parent = billboard
+
+			hum.HealthChanged:Connect(function(newHp)
+				if hpLabel and hpLabel.Parent then
+					hpLabel.Text = "HP: " .. math.floor(newHp) .. " / " .. math.floor(hum.MaxHealth)
+				end
+			end)
+		end
+
+		billboard.Parent = character
+	end
+
+	espHighlights[player] = highlight
+end
+
+local function toggleESP()
+	isESPActive = not isESPActive
+
+	if isESPActive then
+		tween(espCard, 0.2, {BackgroundColor3 = PRIMARY_PILL, TextColor3 = PRIMARY_TEXT})
+		espCard.Text = "ESP: ATIVADO"
+		showToast("ESP Ativado", GREEN_ACCENT, false)
+
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer then
+				if p.Character then applyESPToCharacter(p, p.Character) end
+				espCharAddedConns[p] = p.CharacterAdded:Connect(function(char)
+					if isESPActive then applyESPToCharacter(p, char) end
+				end)
+			end
+		end
+
+		espPlayerAddedConn = Players.PlayerAdded:Connect(function(p)
+			espCharAddedConns[p] = p.CharacterAdded:Connect(function(char)
+				if isESPActive then applyESPToCharacter(p, char) end
+			end)
+		end)
+
+		espPlayerRemovingConn = Players.PlayerRemoving:Connect(function(p)
+			removeESPFromPlayer(p)
+			if espCharAddedConns[p] then
+				espCharAddedConns[p]:Disconnect()
+				espCharAddedConns[p] = nil
+			end
+		end)
+	else
+		tween(espCard, 0.2, {BackgroundColor3 = CARD_COLOR, TextColor3 = SECONDARY_TEXT})
+		espCard.Text = "ESP: DESATIVADO"
+		showToast("ESP Desativado", RED_ACCENT, false)
+
+		clearAllESP()
+	end
+end
+
+espCard.MouseButton1Click:Connect(toggleESP)
 
 ---------------------------------------------------------
 -- REGENERAÇÃO DE VIDA
@@ -842,10 +1044,11 @@ end
 
 noclipKeyBtn.MouseButton1Click:Connect(function() startListening("Noclip", noclipKeyBtn) end)
 regenKeyBtn.MouseButton1Click:Connect(function() startListening("Regen", regenKeyBtn) end)
+espKeyBtn.MouseButton1Click:Connect(function() startListening("ESP", espKeyBtn) end)
 menuKeyBtn.MouseButton1Click:Connect(function() startListening("Menu", menuKeyBtn) end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	-- Atalho 'K' para focar na caixa de texto da Key sem clicar[cite: 4]
+	-- Atalho 'K' para focar na caixa de texto da Key sem clicar
 	if not gameProcessed and not isAuthenticated then
 		if input.KeyCode == Enum.KeyCode.K then
 			task.defer(function()
@@ -857,7 +1060,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
 	if listeningTarget then
 		if input.UserInputType == Enum.UserInputType.Keyboard then
-			local btn = (listeningTarget == "Noclip" and noclipKeyBtn) or (listeningTarget == "Regen" and regenKeyBtn) or menuKeyBtn
+			local btn = (listeningTarget == "Noclip" and noclipKeyBtn) 
+				or (listeningTarget == "Regen" and regenKeyBtn) 
+				or (listeningTarget == "ESP" and espKeyBtn) 
+				or menuKeyBtn
 			
 			if input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Escape then
 				keybinds[listeningTarget] = nil
@@ -880,6 +1086,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			toggleNoclip()
 		elseif keybinds.Regen and input.KeyCode == keybinds.Regen then
 			toggleRegen()
+		elseif keybinds.ESP and input.KeyCode == keybinds.ESP then
+			toggleESP()
 		elseif keybinds.Menu and input.KeyCode == keybinds.Menu then
 			toggleMenuVisibility()
 		end
